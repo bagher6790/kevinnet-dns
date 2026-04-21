@@ -4246,6 +4246,18 @@ class App(tk.Tk):
         exe_src    = get_masterdns_exe()
         exe_copied = False
         exe_note   = ""
+
+        # Debug: log every location checked
+        fa_log = self._lang == "fa"
+        fname  = "MasterDnsVPN.exe" if sys.platform == "win32" else "MasterDnsVPN"
+        self._log(f"{'جستجوی MasterDnsVPN:' if fa_log else 'Looking for MasterDnsVPN:'}")
+        self._log(f"  app_dir = {app_dir()}")
+        self._log(f"  local   = {app_dir() / fname}  exists={( app_dir() / fname).exists()}")
+        if getattr(sys, 'frozen', False):
+            meipass = Path(getattr(sys, '_MEIPASS', 'N/A'))
+            self._log(f"  MEIPASS = {meipass / fname}  exists={(meipass / fname).exists()}")
+        self._log(f"  result  = {exe_src}")
+
         if exe_src:
             try:
                 exe_dst = folder / exe_src.name
