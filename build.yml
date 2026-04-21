@@ -153,10 +153,24 @@ jobs:
           fi
           echo "SUCCESS: Universal binary contains both arm64 and x86_64"
           ls -lh bins/KevinNet_macOS_Universal
+      # Upload universal binary
       - uses: actions/upload-artifact@v4
         with:
           name: macOS-Universal
           path: bins/KevinNet_macOS_Universal
+      # Also upload individual slices as fallback for users with issues
+      - name: Rename individual binaries for upload
+        run: |
+          cp bins/arm64/KevinNet_arm64   bins/KevinNet_macOS_arm64
+          cp bins/x86/KevinNet_x86_64    bins/KevinNet_macOS_Intel_x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macOS-arm64-only
+          path: bins/KevinNet_macOS_arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macOS-Intel-x64-only
+          path: bins/KevinNet_macOS_Intel_x64
 
   # ── Linux x64 ────────────────────────────────────────────────
   linux-x64:
@@ -241,7 +255,9 @@ jobs:
             |---|---|
             | 🪟 Windows x64 | `KevinNet_Windows_x64.exe` |
             | 🪟 Windows ARM64 | `KevinNet_Windows_ARM64.exe` |
-            | 🍎 macOS Universal (Intel + Apple Silicon) | `KevinNet_macOS_Universal` |
+            | 🍎 macOS Universal (Intel + Apple Silicon) | `KevinNet_macOS_Universal` ✅ recommended |
+            | 🍎 macOS Intel only (fallback) | `KevinNet_macOS_Intel_x64` |
+            | 🍎 macOS Apple Silicon only (fallback) | `KevinNet_macOS_arm64` |
             | 🐧 Linux x64 | `KevinNet_Linux_x64` |
             | 🐧 Linux ARM64 | `KevinNet_Linux_ARM64` |
 
@@ -253,6 +269,8 @@ jobs:
             release_files/Windows-x64/KevinNet_Windows_x64.exe
             release_files/Windows-ARM64/KevinNet_Windows_ARM64.exe
             release_files/macOS-Universal/KevinNet_macOS_Universal
+            release_files/macOS-Intel-x64-only/KevinNet_macOS_Intel_x64
+            release_files/macOS-arm64-only/KevinNet_macOS_arm64
             release_files/Linux-x64/KevinNet_Linux_x64
             release_files/Linux-ARM64/KevinNet_Linux_ARM64
           draft: false
