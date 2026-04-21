@@ -3712,11 +3712,14 @@ class App(tk.Tk):
         c2.pack(fill="x", pady=(0, 10))
         card_hdr(c2, "c2_hdr", "🔍  Scan Options", "🔍  تنظیمات اسکن", BLUE)
 
-        spin_row = tk.Frame(c2, bg=CARD)
-        spin_row.pack(fill="x", padx=14, pady=10)
+        # Two rows of spinboxes so nothing gets cut off on narrow screens
+        spin_row1 = tk.Frame(c2, bg=CARD)
+        spin_row1.pack(fill="x", padx=14, pady=(10, 4))
+        spin_row2 = tk.Frame(c2, bg=CARD)
+        spin_row2.pack(fill="x", padx=14, pady=(0, 6))
 
-        def spin_col(wlbl, wsp, en, pfa, lo, hi, default):
-            col = tk.Frame(spin_row, bg=CARD)
+        def spin_col(parent, wlbl, wsp, en, pfa, lo, hi, default):
+            col = tk.Frame(parent, bg=CARD)
             col.pack(side="left", fill="x", expand=True, padx=(0, 8))
             lbl = tk.Label(col, text=pfa if fa else en, bg=CARD, fg=MUTED,
                            font=FA(9) if fa else F(9), anchor="w")
@@ -3733,10 +3736,15 @@ class App(tk.Tk):
             W[wsp]  = sp
             return var
 
-        self._target_var  = spin_col("t_lbl",  "t_sp",  "Target",        "هدف",              5,   500,  100)
-        self._conc_var    = spin_col("c_lbl",  "c_sp",  "Concurrency",   "همزمانی",          10,  500,  100)
-        self._timeout_var = spin_col("to_lbl", "to_sp", "Timeout (s)",   "Timeout (ثانیه)",  1,   10,     3)
-        self._pool_var    = spin_col("p_lbl",  "p_sp",  "Pool (x1000)",  "پول (×۱۰۰۰)",      10, 1000,  200)
+        # Row 1: Target  Concurrency  Timeout
+        self._target_var  = spin_col(spin_row1, "t_lbl",  "t_sp",  "Target",       "هدف",             5,    500,  100)
+        self._conc_var    = spin_col(spin_row1, "c_lbl",  "c_sp",  "Concurrency",  "همزمانی",         10,   500,  100)
+        self._timeout_var = spin_col(spin_row1, "to_lbl", "to_sp", "Timeout (s)",  "Timeout (ثانیه)", 1,    10,     3)
+        # Row 2: Pool (full width so label is readable)
+        self._pool_var    = spin_col(spin_row2, "p_lbl",  "p_sp",  "Pool ×1000 IPs", "پول ×۱۰۰۰ IP",  10, 1000,  200)
+        # Add empty spacers to balance row 2 visually
+        tk.Frame(spin_row2, bg=CARD).pack(side="left", fill="x", expand=True, padx=(0,8))
+        tk.Frame(spin_row2, bg=CARD).pack(side="left", fill="x", expand=True)
 
         tk.Frame(c2, bg=CARD, height=6).pack()
 
