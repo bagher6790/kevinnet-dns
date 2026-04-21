@@ -2901,7 +2901,7 @@ def get_builtin_resolvers() -> list[str]:
     return ips
 
 
-def get_iran_sample(max_ips: int = 60_000) -> list[str]:
+def get_iran_sample(max_ips: int = 200_000) -> list[str]:
     """Sample IPs evenly from Iran CIDR ranges."""
     import ipaddress as _ip
     nets = []
@@ -3733,9 +3733,10 @@ class App(tk.Tk):
             W[wsp]  = sp
             return var
 
-        self._target_var  = spin_col("t_lbl",  "t_sp",  "Target",       "هدف",            5,  500, 100)
-        self._conc_var    = spin_col("c_lbl",  "c_sp",  "Concurrency",  "همزمانی",         10, 500, 100)
-        self._timeout_var = spin_col("to_lbl", "to_sp", "Timeout (s)",  "Timeout (ثانیه)", 1,  10,    3)
+        self._target_var  = spin_col("t_lbl",  "t_sp",  "Target",        "هدف",              5,   500,  100)
+        self._conc_var    = spin_col("c_lbl",  "c_sp",  "Concurrency",   "همزمانی",          10,  500,  100)
+        self._timeout_var = spin_col("to_lbl", "to_sp", "Timeout (s)",   "Timeout (ثانیه)",  1,   10,     3)
+        self._pool_var    = spin_col("p_lbl",  "p_sp",  "Pool (x1000)",  "پول (×۱۰۰۰)",      10, 1000,  200)
 
         tk.Frame(c2, bg=CARD, height=6).pack()
 
@@ -3886,6 +3887,7 @@ class App(tk.Tk):
             ("t_lbl",  "هدف",            "Target"),
             ("c_lbl",  "همزمانی",         "Concurrency"),
             ("to_lbl", "Timeout (ثانیه)", "Timeout (s)"),
+            ("p_lbl",  "پول (×۱۰۰۰)",    "Pool (x1000)"),
         ]:
             W[wlbl].config(text=fa_t if fa else en_t, font=ff(9))
 
@@ -3953,7 +3955,8 @@ class App(tk.Tk):
         conc    = self._conc_var.get()
         timeout = float(self._timeout_var.get())
         builtin_ips = get_builtin_resolvers()           # 376 known public
-        iran_ips    = get_iran_sample(60_000)            # 60k from Iran CIDRs
+        pool_size   = self._pool_var.get() * 1000
+        iran_ips    = get_iran_sample(pool_size)            # user-defined pool size
         # Combine: built-in first (tested first), then Iran sample
         seen = set()
         ips  = []
