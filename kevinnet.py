@@ -3358,11 +3358,11 @@ TEXT   = "#f0f4ff"       # near-white text
 MUTED  = "#8899bb"       # muted blue-grey labels
 INPUT  = "#111827"       # input field background
 # Button foreground colours — picked per-button for max contrast
-SCAN_FG  = "#001a15"    # dark on teal (active scan btn)
-STOP_FG  = "#1a0000"    # dark on red  (active stop btn)
-SAVE_FG  = "#020d22"    # dark on blue (active save btn)
-CLEAR_FG = "#dce8ff"    # light on dark border
-BTN_FG   = "#001a15"    # default dark fg
+SCAN_FG  = "#000000"    # black text on all buttons
+STOP_FG  = "#000000"    # black text on all buttons
+SAVE_FG  = "#000000"    # black text on all buttons
+CLEAR_FG = "#000000"    # black text on all buttons
+BTN_FG   = "#000000"    # black text
 
 # Disabled button styles — clear bg + readable light text
 DIS_BG   = "#1e2535"    # neutral dark — same for all disabled buttons
@@ -3495,9 +3495,9 @@ def show_help(parent, lang):
     tk.Frame(d, bg=BORDER, height=1).pack(fill="x", padx=24)
     tk.Button(d,
               text="متوجه شدم  ✓" if lang == "fa" else "Got it  ✓",
-              bg=ACCENT, fg=SCAN_FG, font=ff(11, "bold"),
+              bg=ACCENT, fg="#000000", font=ff(11, "bold"),
               relief="flat", bd=0, pady=11, padx=30, cursor="hand2",
-              activebackground="#00bfa5", activeforeground=SCAN_FG,
+              activebackground="#00bfa5", activeforeground="#000000",
               command=d.destroy).pack(pady=14)
     d.update_idletasks()
     px = parent.winfo_x() + parent.winfo_width()  // 2
@@ -3611,9 +3611,9 @@ class App(tk.Tk):
                     _, verified = item
                     fa = self._lang == "fa"
                     self._found_ips = list(verified)
-                    self._W["btn_scan"].config(state="normal",  bg=ACCENT,  fg=SCAN_FG, disabledforeground=DIS_FG)
+                    self._W["btn_scan"].config(state="normal",  bg=ACCENT,  fg="#000000", disabledforeground=DIS_FG)
                     if verified:
-                        self._W["btn_save"].config(state="normal",  bg=BLUE,   fg=SAVE_FG, disabledforeground=DIS_FG)
+                        self._W["btn_save"].config(state="normal",  bg=BLUE,   fg="#000000", disabledforeground=DIS_FG)
                     n = len(verified)
                     self._W["badge"].config(
                         text=f"{n}  {'تأیید E2E' if fa else 'E2E verified'}")
@@ -3655,7 +3655,7 @@ class App(tk.Tk):
                            font=FA(10, "bold"), padx=14, pady=7,
                            cursor="hand2")
             lbl.pack()
-            def on_enter(e):  lbl.config(bg=ACCENT, fg=SCAN_FG); fr.config(bg=ACCENT)
+            def on_enter(e):  lbl.config(bg=ACCENT, fg="#000000"); fr.config(bg=ACCENT)
             def on_leave(e):  lbl.config(bg=BORDER, fg=fg_c);    fr.config(bg=BORDER)
             def on_click(e):  command()
             lbl.bind("<Enter>",   on_enter)
@@ -3826,7 +3826,7 @@ class App(tk.Tk):
             W[wkey] = b
 
         mk_btn("btn_scan",    "▶  Start Scan",           "▶  شروع اسکن",           ACCENT,    SCAN_FG, self._start_scan)
-        mk_btn("btn_stop",    "■  Stop",                  "■  توقف",                DANGER,    STOP_FG, self._stop_scan,    "disabled")
+        mk_btn("btn_stop",    "■  Stop",                  "■  توقف",                DANGER,    "#000000", self._stop_scan,    "disabled")
         mk_btn("btn_save",    "💾  Save Config Files",    "💾  ذخیره فایل‌ها",      BLUE,      SAVE_FG, self._save_configs, "disabled")
         mk_btn("btn_connect", "🚀  Connect MasterDNSVPN", "🚀  اتصال MasterDNSVPN", CONN_BG, "white", self._launch_vpn,   "disabled")
         mk_btn("btn_clear",   "🗑  Clear",                 "🗑  پاک کردن",            BORDER,    CLEAR_FG,self._clear)
@@ -4012,7 +4012,7 @@ class App(tk.Tk):
         self._stop_ev.clear()
         self._scanning = True
         self._W["btn_scan"].config(state="disabled", bg=DIS_BG, fg=DIS_FG, disabledforeground=DIS_FG)
-        self._W["btn_stop"].config(state="normal",   bg=DANGER, fg=STOP_FG, disabledforeground=DIS_FG)
+        self._W["btn_stop"].config(state="normal",   bg=DANGER, fg="#000000", disabledforeground=DIS_FG)
         self._W["btn_save"].config(state="disabled", bg=DIS_BG, fg=DIS_FG, disabledforeground=DIS_FG)
         self._W["progress"]["value"] = 0
         self._W["status_lbl"].config(text="● Scanning…", fg=WARN)
@@ -4155,9 +4155,9 @@ class App(tk.Tk):
             self._run_e2e_auto()
         else:
             # No results or stopped — just enable save if anything found
-            self._W["btn_scan"].config(state="normal",  bg=ACCENT,  fg=SCAN_FG, disabledforeground=DIS_FG)
+            self._W["btn_scan"].config(state="normal",  bg=ACCENT,  fg="#000000", disabledforeground=DIS_FG)
             if found:
-                self._W["btn_save"].config(state="normal",  bg=BLUE,   fg=SAVE_FG, disabledforeground=DIS_FG)
+                self._W["btn_save"].config(state="normal",  bg=BLUE,   fg="#000000", disabledforeground=DIS_FG)
             self._W["status_lbl"].config(
                 text=f"● {'اتمام' if fa else 'Done'}  —  {found} {'یافت‌شده' if fa else 'found'}",
                 fg=GREEN)
@@ -4168,9 +4168,9 @@ class App(tk.Tk):
         domain = self._domain_var.get().strip()
 
         if not domain or not self._found_ips:
-            self._W["btn_scan"].config(state="normal",  bg=ACCENT,  fg=SCAN_FG, disabledforeground=DIS_FG)
+            self._W["btn_scan"].config(state="normal",  bg=ACCENT,  fg="#000000", disabledforeground=DIS_FG)
             if self._found_ips:
-                self._W["btn_save"].config(state="normal",  bg=BLUE,   fg=SAVE_FG, disabledforeground=DIS_FG)
+                self._W["btn_save"].config(state="normal",  bg=BLUE,   fg="#000000", disabledforeground=DIS_FG)
             return
 
         timeout = float(self._timeout_var.get())
@@ -4195,7 +4195,7 @@ class App(tk.Tk):
     def _stop_scan(self):
         self._stop_ev.set()
         self._W["btn_stop"].config(state="disabled", bg=DIS_BG, fg=DIS_FG, disabledforeground=DIS_FG)
-        self._W["btn_scan"].config(state="normal",   bg=ACCENT,  fg=SCAN_FG, disabledforeground=DIS_FG)
+        self._W["btn_scan"].config(state="normal",   bg=ACCENT,  fg="#000000", disabledforeground=DIS_FG)
         self._log("⏹  Stopped.")
 
     def _clear(self):
@@ -4351,7 +4351,7 @@ class App(tk.Tk):
             )
 
         self._saved_folder = folder
-        self._W["btn_connect"].config(state="normal",  bg=CONN_BG, fg="white", disabledforeground=DIS_FG)
+        self._W["btn_connect"].config(state="normal",  bg=CONN_BG, fg="#000000", disabledforeground=DIS_FG)
         self._W["status_lbl"].config(
             text=f"● {'ذخیره شد' if fa else 'Saved'}", fg=ACCENT)
         self._log(f"Saved  →  {folder}")
