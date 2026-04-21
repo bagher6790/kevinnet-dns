@@ -26,11 +26,12 @@ Download the latest compiled binary for your platform from the [**Releases page*
 | 🐧 Linux x64 | `KevinNet_Linux_x64` |
 | 🐧 Linux ARM64 | `KevinNet_Linux_ARM64` |
 
-> **macOS:** After downloading, right-click → Open → Open to bypass Gatekeeper.
-> If you see *"damaged"* or *"cannot be verified"*, run this in Terminal:
+> **macOS:** After downloading:
 > ```bash
-> xattr -d com.apple.quarantine /path/to/KevinNet_macOS_Universal
+> chmod +x KevinNet_macOS_Universal
+> xattr -d com.apple.quarantine KevinNet_macOS_Universal
 > ```
+> Or right-click → Open → Open to bypass Gatekeeper without the terminal.
 > **Linux:** Run `chmod +x KevinNet_Linux_x64` before launching.
 
 ---
