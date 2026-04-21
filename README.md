@@ -1,4 +1,10 @@
-# 🌐 KevinNet DNS Config
+<div align="right">
+
+[🇮🇷 فارسی](README_FA.md) | 🇬🇧 English
+
+</div>
+
+# 🌐 KevinNet DNS
 
 **Companion tool for [MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN)**
 

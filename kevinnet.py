@@ -58,19 +58,40 @@ def app_dir() -> Path:
 
 def get_masterdns_exe() -> Path | None:
     """
-    Find the bundled MasterDnsVPN executable for the current platform.
-    Looks in PyInstaller _MEIPASS bundle first, then next to the app.
+    Find the MasterDnsVPN binary.
+    Priority:
+      1. Next to the .exe / app (already extracted or placed by user)
+      2. Inside PyInstaller _MEIPASS → copy to app_dir() so it persists
+      3. Next to the .py script (dev mode)
     """
     fname = "MasterDnsVPN.exe" if sys.platform == "win32" else "MasterDnsVPN"
-    # PyInstaller bundle
-    if getattr(sys, "frozen", False):
-        bundled = Path(getattr(sys, "_MEIPASS", "")) / fname
-        if bundled.exists():
-            return bundled
-    # Next to script / exe
+
+    # 1. Already sitting next to the compiled app
     local = app_dir() / fname
     if local.exists():
         return local
+
+    # 2. Bundled inside PyInstaller temp dir (_MEIPASS)
+    if getattr(sys, "frozen", False):
+        meipass  = Path(getattr(sys, "_MEIPASS", ""))
+        bundled  = meipass / fname
+        if bundled.exists():
+            # Copy out to app_dir so it persists after _MEIPASS cleanup
+            try:
+                import shutil as _sh
+                dest = app_dir() / fname
+                _sh.copy2(str(bundled), str(dest))
+                if sys.platform != "win32":
+                    dest.chmod(dest.stat().st_mode | 0o755)
+                return dest
+            except Exception:
+                return bundled   # fallback: use _MEIPASS path directly
+
+    # 3. Next to the .py script (running from source)
+    src_local = Path(__file__).resolve().parent / fname
+    if src_local.exists():
+        return src_local
+
     return None
 
 # ═══════════════════════════════════════════════════════════════

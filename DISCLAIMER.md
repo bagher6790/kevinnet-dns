@@ -1,3 +1,9 @@
+<div align="right">
+
+[🇮🇷 فارسی](DISCLAIMER_FA.md) | 🇬🇧 English
+
+</div>
+
 # ⚠️ Disclaimer
 
 ## KevinNet DNS Config
