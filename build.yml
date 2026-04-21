@@ -53,12 +53,12 @@ jobs:
           name: Windows-ARM64
           path: dist/KevinNet_Windows_ARM64.exe
 
-  # ── macOS arm64 (Apple Silicon) ──────────────────────────────
+  # ── macOS Apple Silicon (arm64) ───────────────────────────────
   macos-arm64:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Python + deps
+      - name: Install Python arm64 + deps
         run: |
           brew install python@3.12 python-tk@3.12
           /opt/homebrew/opt/python@3.12/bin/python3.12 -m venv .venv
@@ -71,29 +71,26 @@ jobs:
           .venv/bin/python -m PyInstaller \
             --onefile --name KevinNet_arm64 --clean \
             $ADD_DATA kevinnet.py
-          # extract from .app bundle if needed
           if [ ! -f "dist/KevinNet_arm64" ] && [ -d "dist/KevinNet_arm64.app" ]; then
             cp "dist/KevinNet_arm64.app/Contents/MacOS/KevinNet_arm64" "dist/KevinNet_arm64"
           fi
-          lipo -archs dist/KevinNet_arm64
+          echo "=== arm64 arch ===" && lipo -archs dist/KevinNet_arm64
+          # copy with final name too
+          cp dist/KevinNet_arm64 dist/KevinNet_macOS_arm64
       - uses: actions/upload-artifact@v4
         with:
-          name: macOS-arm64-bin
-          path: dist/KevinNet_arm64
+          name: macOS-arm64
+          path: dist/KevinNet_macOS_arm64
 
-  # ── macOS x86_64 (Intel) ─────────────────────────────────────
-  macos-x86:
+  # ── macOS Intel (x86_64) ─────────────────────────────────────
+  macos-intel:
     runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install Tkinter
-        run: brew install python-tk@3.12
-      - name: Install deps
+      - name: Install Python x86_64 + deps
         run: |
-          python3 -m venv .venv
+          brew install python@3.12 python-tk@3.12
+          python3.12 -m venv .venv
           .venv/bin/pip install dnspython pyinstaller pillow --upgrade --quiet
       - name: Build x86_64 binary
         run: |
@@ -106,71 +103,59 @@ jobs:
           if [ ! -f "dist/KevinNet_x86_64" ] && [ -d "dist/KevinNet_x86_64.app" ]; then
             cp "dist/KevinNet_x86_64.app/Contents/MacOS/KevinNet_x86_64" "dist/KevinNet_x86_64"
           fi
-          lipo -archs dist/KevinNet_x86_64
+          echo "=== x86_64 arch ===" && lipo -archs dist/KevinNet_x86_64
+          # copy with final name too
+          cp dist/KevinNet_x86_64 dist/KevinNet_macOS_Intel
       - uses: actions/upload-artifact@v4
         with:
-          name: macOS-x86-bin
-          path: dist/KevinNet_x86_64
+          name: macOS-Intel
+          path: dist/KevinNet_macOS_Intel
 
-  # ── macOS Universal (combine arm64 + x86_64) ─────────────────
+  # ── macOS Universal (lipo arm64 + x86_64) ────────────────────
   macos-universal:
-    needs: [macos-arm64, macos-x86]
+    needs: [macos-arm64, macos-intel]
     runs-on: macos-latest
     steps:
-      - name: Download arm64 binary
+      - name: Download arm64
         uses: actions/download-artifact@v4
         with:
-          name: macOS-arm64-bin
-          path: bins/arm64/
-      - name: Download x86_64 binary
+          name: macOS-arm64
+          path: bins/
+      - name: Download Intel
         uses: actions/download-artifact@v4
         with:
-          name: macOS-x86-bin
-          path: bins/x86/
-      - name: Verify and Combine Universal Binary
+          name: macOS-Intel
+          path: bins/
+      - name: Verify downloads
         run: |
-          echo "=== Downloaded files ==="
-          find bins/ -type f | sort
-          chmod +x bins/arm64/KevinNet_arm64 bins/x86/KevinNet_x86_64
-
-          echo "=== Verify arm64 arch ==="
-          lipo -archs bins/arm64/KevinNet_arm64
-
-          echo "=== Verify x86_64 arch ==="
-          lipo -archs bins/x86/KevinNet_x86_64
-
-          echo "=== Combining ==="
-          lipo -create             bins/arm64/KevinNet_arm64             bins/x86/KevinNet_x86_64             -output bins/KevinNet_macOS_Universal
-
-          echo "=== Final binary archs (MUST show both) ==="
+          echo "=== Files in bins/ ==="
+          ls -lh bins/
+          echo "=== arm64 arch ==="
+          chmod +x bins/KevinNet_macOS_arm64
+          lipo -archs bins/KevinNet_macOS_arm64
+          echo "=== Intel arch ==="
+          chmod +x bins/KevinNet_macOS_Intel
+          lipo -archs bins/KevinNet_macOS_Intel
+      - name: Create Universal Binary
+        run: |
+          lipo -create \
+            bins/KevinNet_macOS_arm64 \
+            bins/KevinNet_macOS_Intel \
+            -output bins/KevinNet_macOS_Universal
+          echo "=== Universal archs (must show both) ==="
           lipo -archs bins/KevinNet_macOS_Universal
-
-          # Fail the build if both slices are not present
           ARCHS=$(lipo -archs bins/KevinNet_macOS_Universal)
           if [[ "$ARCHS" != *"arm64"* ]] || [[ "$ARCHS" != *"x86_64"* ]]; then
-            echo "ERROR: Universal binary is missing a slice! Got: $ARCHS"
+            echo "FAIL: missing a slice — got: $ARCHS"
             exit 1
           fi
-          echo "SUCCESS: Universal binary contains both arm64 and x86_64"
-          ls -lh bins/KevinNet_macOS_Universal
-      # Upload universal binary
-      - uses: actions/upload-artifact@v4
+          echo "SUCCESS: $ARCHS"
+          ls -lh bins/
+      - name: Upload Universal
+        uses: actions/upload-artifact@v4
         with:
           name: macOS-Universal
           path: bins/KevinNet_macOS_Universal
-      # Also upload individual slices as fallback for users with issues
-      - name: Rename individual binaries for upload
-        run: |
-          cp bins/arm64/KevinNet_arm64   bins/KevinNet_macOS_arm64
-          cp bins/x86/KevinNet_x86_64    bins/KevinNet_macOS_Intel_x64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macOS-arm64-only
-          path: bins/KevinNet_macOS_arm64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macOS-Intel-x64-only
-          path: bins/KevinNet_macOS_Intel_x64
 
   # ── Linux x64 ────────────────────────────────────────────────
   linux-x64:
@@ -226,7 +211,7 @@ jobs:
 
   # ── Create GitHub Release ─────────────────────────────────────
   release:
-    needs: [windows-x64, windows-arm64, macos-universal, linux-x64, linux-arm64]
+    needs: [windows-x64, windows-arm64, macos-arm64, macos-intel, macos-universal, linux-x64, linux-arm64]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
@@ -238,7 +223,7 @@ jobs:
         with:
           path: release_files/
       - name: List release files
-        run: find release_files/ -type f
+        run: find release_files/ -type f | sort
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -251,26 +236,29 @@ jobs:
 
             ### Download for your platform:
 
-            | Platform | File |
-            |---|---|
-            | 🪟 Windows x64 | `KevinNet_Windows_x64.exe` |
-            | 🪟 Windows ARM64 | `KevinNet_Windows_ARM64.exe` |
-            | 🍎 macOS Universal (Intel + Apple Silicon) | `KevinNet_macOS_Universal` ✅ recommended |
-            | 🍎 macOS Intel only (fallback) | `KevinNet_macOS_Intel_x64` |
-            | 🍎 macOS Apple Silicon only (fallback) | `KevinNet_macOS_arm64` |
-            | 🐧 Linux x64 | `KevinNet_Linux_x64` |
-            | 🐧 Linux ARM64 | `KevinNet_Linux_ARM64` |
+            | Platform | File | Notes |
+            |---|---|---|
+            | 🪟 Windows x64 | `KevinNet_Windows_x64.exe` | Most Windows PCs |
+            | 🪟 Windows ARM64 | `KevinNet_Windows_ARM64.exe` | Surface, Snapdragon |
+            | 🍎 macOS Universal | `KevinNet_macOS_Universal` | ✅ Recommended — all Macs |
+            | 🍎 macOS Apple Silicon | `KevinNet_macOS_arm64` | M1/M2/M3 fallback |
+            | 🍎 macOS Intel | `KevinNet_macOS_Intel` | Intel fallback |
+            | 🐧 Linux x64 | `KevinNet_Linux_x64` | |
+            | 🐧 Linux ARM64 | `KevinNet_Linux_ARM64` | |
 
-            **macOS:** Right-click → Open → Open to bypass Gatekeeper.
-            **Linux:** Run `chmod +x KevinNet_Linux_*` first.
+            **macOS setup:**
+            ```bash
+            chmod +x KevinNet_macOS_*
+            xattr -d com.apple.quarantine KevinNet_macOS_*
+            ```
 
             See [README.md](README.md) for full setup and usage instructions.
           files: |
             release_files/Windows-x64/KevinNet_Windows_x64.exe
             release_files/Windows-ARM64/KevinNet_Windows_ARM64.exe
             release_files/macOS-Universal/KevinNet_macOS_Universal
-            release_files/macOS-Intel-x64-only/KevinNet_macOS_Intel_x64
-            release_files/macOS-arm64-only/KevinNet_macOS_arm64
+            release_files/macOS-arm64/KevinNet_macOS_arm64
+            release_files/macOS-Intel/KevinNet_macOS_Intel
             release_files/Linux-x64/KevinNet_Linux_x64
             release_files/Linux-ARM64/KevinNet_Linux_ARM64
           draft: false
