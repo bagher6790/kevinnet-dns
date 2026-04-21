@@ -29,6 +29,10 @@
 | 🐧 لینوکس ARM64 | `KevinNet_Linux_ARM64` |
 
 > **مک:** بعد از دانلود، راست‌کلیک ← Open ← Open کنید تا Gatekeeper دور بزنید.
+> اگر پیام *"damaged"* یا *"cannot be verified"* دیدید، این دستور را در ترمینال بزنید:
+> ```bash
+> xattr -d com.apple.quarantine /path/to/KevinNet_macOS_Universal
+> ```
 > **لینوکس:** قبل از اجرا `chmod +x KevinNet_Linux_x64` را بزنید.
 
 ---
