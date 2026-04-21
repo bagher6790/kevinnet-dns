@@ -3358,11 +3358,19 @@ TEXT   = "#f0f4ff"       # near-white text
 MUTED  = "#8899bb"       # muted blue-grey labels
 INPUT  = "#111827"       # input field background
 # Button foreground colours — picked per-button for max contrast
-SCAN_FG  = "#002b22"    # very dark teal on ACCENT
-STOP_FG  = "#2d0000"    # very dark red on DANGER
-SAVE_FG  = "#071433"    # very dark blue on BLUE
-CLEAR_FG = "#c8d6f0"    # light on dark BORDER
-BTN_FG   = "#002b22"    # default (used for help dialog)
+SCAN_FG  = "#001a15"    # dark on teal (active scan btn)
+STOP_FG  = "#1a0000"    # dark on red  (active stop btn)
+SAVE_FG  = "#020d22"    # dark on blue (active save btn)
+CLEAR_FG = "#dce8ff"    # light on dark border
+BTN_FG   = "#001a15"    # default dark fg
+
+# Disabled button styles — clear bg + readable light text
+DIS_BG   = "#1e2535"    # neutral dark — same for all disabled buttons
+DIS_FG   = "#5a6a88"    # muted blue-grey text — clearly "off" but readable
+
+# Active connect button
+CONN_BG  = "#059669"
+CONN_DIS = "#0d2a1f"    # dark green when disabled
 
 def F(size=11, weight="normal"):
     for fam in ("Segoe UI","SF Pro Display","Helvetica Neue","Ubuntu","Arial"):
@@ -3386,29 +3394,79 @@ def FA(size=11, weight="normal"):
 #  HELP DIALOG
 # ═══════════════════════════════════════════════════════════════
 HELP = {
-    "fa": ("راهنمای استفاده", [
+    "fa": ("راهنمای استفاده — KevinNet DNS", [
         ("۱  دامنه تانل را وارد کنید",
-         "زیر دامنه‌ای که به سرور MasterDnsVPN اشاره دارد\nمثال:  v.example.com"),
+         "ساب‌دامینی که به سرور MasterDnsVPN شما اشاره دارد.\n"
+         "مثال:  v.example.com\n"
+         "این را از تنظیمات سرورتان بگیرید."),
         ("۲  کلید رمزنگاری را وارد کنید",
-         "کلید ۳۲ کاراکتری که باید با تنظیمات سرور یکسان باشد."),
+         "کلید ۳۲ کاراکتری که هنگام نصب سرور نمایش داده شد.\n"
+         "در فایل encrypt_key.txt کنار MasterDnsVPN سرور ذخیره شده."),
         ("۳  نام کشور / پوشه را وارد کنید",
-         "مثال:  Iran   (پوشه در کنار این برنامه ساخته می‌شود)"),
-        ("۴  روی شروع اسکن کلیک کنید",
-         "برنامه DNS Resolverهای عمومی را در برابر دامنه شما تست می‌کند."),
-        ("۵  روی ذخیره فایل‌ها کلیک کنید",
-         "client_config.toml  و  client_resolvers.txt  ذخیره می‌شوند."),
+         "یک نام برای پوشه خروجی — مثلاً  Iran  یا  Turkey\n"
+         "پوشه کنار همین برنامه ساخته می‌شود."),
+        ("۴  تنظیمات اسکن را انتخاب کنید",
+         "هدف (Target): چند Resolver می‌خواهید — پیشنهاد: 100\n"
+         "همزمانی (Concurrency): بالاتر از 100 نروید در ایران — بهترین: 80\n"
+         "Timeout: شبکه‌های ایران کند هستند — پیشنهاد: 3 ثانیه\n"
+         "پول (Pool ×1000): هر چه بیشتر، Resolver بیشتر پیدا می‌شود\n"
+         "  → کم پیدا شد؟ Pool را از 200 به 300 یا 500 افزایش دهید\n"
+         "  → اسکن را 2-3 بار اجرا کنید — هر بار IP‌های جدیدی تست می‌شود"),
+        ("۵  روی ▶ شروع اسکن کلیک کنید",
+         "مرحله ۱: بررسی سریع زنده بودن (~200 هزار IP)\n"
+         "مرحله ۲: تست عمیق ۶ معیاره — ★6/6 ◆4-5 ▸2-3 ·0-1\n"
+         "مرحله ۳: تأیید واقعی تانل از طریق MasterDnsVPN — فیلتر اصلی"),
+        ("۶  روی 💾 ذخیره فایل‌ها کلیک کنید",
+         "پوشه کشور ساخته می‌شود با:\n"
+         "• client_config.toml\n"
+         "• client_resolvers.txt\n"
+         "• MasterDnsVPN  (فایل اجرایی VPN)\n"
+         "اگر MasterDnsVPN در پوشه نبود، آن را از GitHub دانلود کنید\n"
+         "و کنار این برنامه بگذارید، سپس دوباره ذخیره کنید."),
+        ("۷  روی 🚀 اتصال MasterDNSVPN کلیک کنید",
+         "ترمینال باز می‌شود و VPN با فایل‌های ذخیره‌شده راه‌اندازی می‌شود.\n"
+         "فقط بعد از ذخیره موفق فعال می‌شود."),
+        ("مک — مشکل 'damaged' یا 'cannot be verified'",
+         "در ترمینال این دو دستور را بزنید:\n"
+         "chmod +x KevinNet_macOS_Universal\n"
+         "xattr -d com.apple.quarantine KevinNet_macOS_Universal"),
     ]),
-    "en": ("How to use", [
+    "en": ("How to use — KevinNet DNS", [
         ("1  Enter your tunnel domain",
-         "The subdomain pointing to your MasterDnsVPN server.\ne.g.  v.example.com"),
+         "The subdomain pointing to your MasterDnsVPN server.\n"
+         "e.g.  v.example.com\n"
+         "Get this from your server configuration."),
         ("2  Enter your encryption key",
-         "The 32-character secret key matching your server config."),
+         "The 32-character key shown when you installed the server.\n"
+         "Also saved in encrypt_key.txt next to MasterDnsVPN on the server."),
         ("3  Enter country / folder name",
-         "e.g.  Iran   (folder is created next to this app)"),
-        ("4  Click Start Scan",
-         "The app tests known public DNS resolvers against your domain."),
-        ("5  Click Save Config Files",
-         "Writes  client_config.toml  and  client_resolvers.txt."),
+         "A name for the output folder — e.g.  Iran  or  Turkey\n"
+         "The folder is created next to this app."),
+        ("4  Choose scan settings",
+         "Target: how many resolvers to find — recommended: 100\n"
+         "Concurrency: do not go above 100 inside Iran — best: 80\n"
+         "Timeout: Iranian networks are slow — recommended: 3s\n"
+         "Pool ×1000: more = more resolvers found\n"
+         "  → Finding very few? Increase Pool from 200 to 300 or 500\n"
+         "  → Run scan 2-3 times — each run tests different IPs"),
+        ("5  Click ▶ Start Scan",
+         "Phase 1: Quick alive check (~200k IPs)\n"
+         "Phase 2: Full 6-check scoring — ★6/6 ◆4-5 ▸2-3 ·0-1\n"
+         "Phase 3: Real tunnel E2E via MasterDnsVPN — the true filter"),
+        ("6  Click 💾 Save Config Files",
+         "Creates the country folder with:\n"
+         "• client_config.toml\n"
+         "• client_resolvers.txt\n"
+         "• MasterDnsVPN executable\n"
+         "If MasterDnsVPN is missing, download it from GitHub\n"
+         "and place it next to this app, then save again."),
+        ("7  Click 🚀 Connect MasterDNSVPN",
+         "Opens a terminal and launches the VPN with your saved config.\n"
+         "Only becomes active after a successful save."),
+        ("macOS — 'damaged' or 'cannot be verified' error",
+         "Run these two commands in Terminal:\n"
+         "chmod +x KevinNet_macOS_Universal\n"
+         "xattr -d com.apple.quarantine KevinNet_macOS_Universal"),
     ]),
 }
 
@@ -3553,9 +3611,9 @@ class App(tk.Tk):
                     _, verified = item
                     fa = self._lang == "fa"
                     self._found_ips = list(verified)
-                    self._W["btn_scan"].config(state="normal", bg=ACCENT)
+                    self._W["btn_scan"].config(state="normal",  bg=ACCENT,  fg=SCAN_FG, disabledforeground=DIS_FG)
                     if verified:
-                        self._W["btn_save"].config(state="normal", bg=BLUE)
+                        self._W["btn_save"].config(state="normal",  bg=BLUE,   fg=SAVE_FG, disabledforeground=DIS_FG)
                     n = len(verified)
                     self._W["badge"].config(
                         text=f"{n}  {'تأیید E2E' if fa else 'E2E verified'}")
@@ -3770,7 +3828,7 @@ class App(tk.Tk):
         mk_btn("btn_scan",    "▶  Start Scan",           "▶  شروع اسکن",           ACCENT,    SCAN_FG, self._start_scan)
         mk_btn("btn_stop",    "■  Stop",                  "■  توقف",                DANGER,    STOP_FG, self._stop_scan,    "disabled")
         mk_btn("btn_save",    "💾  Save Config Files",    "💾  ذخیره فایل‌ها",      BLUE,      SAVE_FG, self._save_configs, "disabled")
-        mk_btn("btn_connect", "🚀  Connect MasterDNSVPN", "🚀  اتصال MasterDNSVPN", "#059669", "white", self._launch_vpn,   "disabled")
+        mk_btn("btn_connect", "🚀  Connect MasterDNSVPN", "🚀  اتصال MasterDNSVPN", CONN_BG, "white", self._launch_vpn,   "disabled")
         mk_btn("btn_clear",   "🗑  Clear",                 "🗑  پاک کردن",            BORDER,    CLEAR_FG,self._clear)
 
     # ── RIGHT PANEL ─────────────────────────────────────────────
@@ -3953,9 +4011,9 @@ class App(tk.Tk):
             self._W["tree"].delete(row)
         self._stop_ev.clear()
         self._scanning = True
-        self._W["btn_scan"].config(state="disabled", bg="#1a3a30")  # dimmed teal
-        self._W["btn_stop"].config(state="normal",   bg=DANGER)
-        self._W["btn_save"].config(state="disabled", bg="#1a2a4a")  # dimmed blue
+        self._W["btn_scan"].config(state="disabled", bg=DIS_BG, fg=DIS_FG, disabledforeground=DIS_FG)
+        self._W["btn_stop"].config(state="normal",   bg=DANGER, fg=STOP_FG, disabledforeground=DIS_FG)
+        self._W["btn_save"].config(state="disabled", bg=DIS_BG, fg=DIS_FG, disabledforeground=DIS_FG)
         self._W["progress"]["value"] = 0
         self._W["status_lbl"].config(text="● Scanning…", fg=WARN)
 
@@ -4082,9 +4140,9 @@ class App(tk.Tk):
     def _on_done(self, tested, found):
         fa = self._lang == "fa"
         self._scanning = False
-        self._W["btn_scan"].config(state="disabled", bg="#1a3a30")
-        self._W["btn_stop"].config(state="disabled", bg="#3a1a1a")
-        self._W["btn_save"].config(state="disabled", bg="#1a2a4a")
+        self._W["btn_scan"].config(state="disabled", bg=DIS_BG, fg=DIS_FG, disabledforeground=DIS_FG)
+        self._W["btn_stop"].config(state="disabled", bg=DIS_BG, fg=DIS_FG, disabledforeground=DIS_FG)
+        self._W["btn_save"].config(state="disabled", bg=DIS_BG, fg=DIS_FG, disabledforeground=DIS_FG)
         self._log(f"{'اسکن DNS کامل شد — تست: ' if fa else 'DNS scan done — tested: '}{tested:,}  {'یافت: ' if fa else 'found: '}{found}")
 
         if found and not self._stop_ev.is_set():
@@ -4097,9 +4155,9 @@ class App(tk.Tk):
             self._run_e2e_auto()
         else:
             # No results or stopped — just enable save if anything found
-            self._W["btn_scan"].config(state="normal", bg=ACCENT)
+            self._W["btn_scan"].config(state="normal",  bg=ACCENT,  fg=SCAN_FG, disabledforeground=DIS_FG)
             if found:
-                self._W["btn_save"].config(state="normal", bg=BLUE)
+                self._W["btn_save"].config(state="normal",  bg=BLUE,   fg=SAVE_FG, disabledforeground=DIS_FG)
             self._W["status_lbl"].config(
                 text=f"● {'اتمام' if fa else 'Done'}  —  {found} {'یافت‌شده' if fa else 'found'}",
                 fg=GREEN)
@@ -4110,9 +4168,9 @@ class App(tk.Tk):
         domain = self._domain_var.get().strip()
 
         if not domain or not self._found_ips:
-            self._W["btn_scan"].config(state="normal", bg=ACCENT)
+            self._W["btn_scan"].config(state="normal",  bg=ACCENT,  fg=SCAN_FG, disabledforeground=DIS_FG)
             if self._found_ips:
-                self._W["btn_save"].config(state="normal", bg=BLUE)
+                self._W["btn_save"].config(state="normal",  bg=BLUE,   fg=SAVE_FG, disabledforeground=DIS_FG)
             return
 
         timeout = float(self._timeout_var.get())
@@ -4136,8 +4194,8 @@ class App(tk.Tk):
 
     def _stop_scan(self):
         self._stop_ev.set()
-        self._W["btn_stop"].config(state="disabled", bg="#3a1a1a")
-        self._W["btn_scan"].config(state="normal",   bg=ACCENT)
+        self._W["btn_stop"].config(state="disabled", bg=DIS_BG, fg=DIS_FG, disabledforeground=DIS_FG)
+        self._W["btn_scan"].config(state="normal",   bg=ACCENT,  fg=SCAN_FG, disabledforeground=DIS_FG)
         self._log("⏹  Stopped.")
 
     def _clear(self):
@@ -4155,9 +4213,9 @@ class App(tk.Tk):
         self._W["badge"].config(text=f"0  {'یافت‌شده' if fa else 'found'}")
         self._W["status_lbl"].config(text="● Ready", fg=GREEN)
         self._W["btn_save"].config(state="disabled",    bg="#1a2a4a")
-        self._W["btn_connect"].config(state="disabled",bg="#052e16")
+        self._W["btn_connect"].config(state="disabled", bg=DIS_BG, fg=DIS_FG, disabledforeground=DIS_FG)
         self._W["btn_scan"].config(state="normal",       bg=ACCENT)
-        self._W["btn_stop"].config(state="disabled",     bg="#3a1a1a")
+        self._W["btn_stop"].config(state="disabled",     bg=DIS_BG, fg=DIS_FG, disabledforeground=DIS_FG)
         self._saved_folder = None
 
     # ── SAVE ────────────────────────────────────────────────────
@@ -4293,7 +4351,7 @@ class App(tk.Tk):
             )
 
         self._saved_folder = folder
-        self._W["btn_connect"].config(state="normal", bg="#059669")
+        self._W["btn_connect"].config(state="normal",  bg=CONN_BG, fg="white", disabledforeground=DIS_FG)
         self._W["status_lbl"].config(
             text=f"● {'ذخیره شد' if fa else 'Saved'}", fg=ACCENT)
         self._log(f"Saved  →  {folder}")
