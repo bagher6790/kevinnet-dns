@@ -72,20 +72,14 @@ def get_masterdns_exe() -> Path | None:
         return local
 
     # 2. Bundled inside PyInstaller temp dir (_MEIPASS)
+    # Return the _MEIPASS path directly — _save_configs copies it to the
+    # country folder. We don't copy to app_dir() to avoid leaving the
+    # binary sitting next to the app after every save.
     if getattr(sys, "frozen", False):
-        meipass  = Path(getattr(sys, "_MEIPASS", ""))
-        bundled  = meipass / fname
+        meipass = Path(getattr(sys, "_MEIPASS", ""))
+        bundled = meipass / fname
         if bundled.exists():
-            # Copy out to app_dir so it persists after _MEIPASS cleanup
-            try:
-                import shutil as _sh
-                dest = app_dir() / fname
-                _sh.copy2(str(bundled), str(dest))
-                if sys.platform != "win32":
-                    dest.chmod(dest.stat().st_mode | 0o755)
-                return dest
-            except Exception:
-                return bundled   # fallback: use _MEIPASS path directly
+            return bundled
 
     # 3. Next to the .py script (running from source)
     src_local = Path(__file__).resolve().parent / fname
