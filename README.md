@@ -16,7 +16,7 @@
 
 ## 📥 Download (No installation needed)
 
-Download the latest stable release for your platform from the [**Releases page**](../../releases/latest):
+Download the latest release for your platform from the [**Releases page**](../../releases/latest):
 
 | Platform | File |
 |---|---|
@@ -25,8 +25,6 @@ Download the latest stable release for your platform from the [**Releases page**
 | 🍎 macOS (Intel + Apple Silicon) | `KevinNet_macOS_Universal` |
 | 🐧 Linux x64 | `KevinNet_Linux_x64` |
 | 🐧 Linux ARM64 | `KevinNet_Linux_ARM64` |
-
-> **Looking for the beta with the new Profiles tab?** Check the [**Releases page**](../../releases) and download the latest `v2.x.x-beta` release.
 
 > **macOS:** After downloading:
 > ```bash
@@ -75,16 +73,18 @@ Result colours:
 - 🟠 **▸ 2–3/6** — Weak, might work
 - ⚫ **· 0–1/6** — Very weak
 
-### Step 4 — Save and Connect
+### Step 4 — Save to MasterDNS Profiles
 
-Click **💾 Save Config Files** — creates a folder (e.g. `Iran/`) next to the app with:
+Click **💾 Save to MasterDNS Profiles** — saves the profile with default options and creates the output folder next to the app:
 - `client_config.toml`
 - `client_resolvers.txt`
 - `MasterDnsVPN` (or `.exe` on Windows)
 
-The profile is also saved to the **Profiles tab** automatically — see below.
+### Step 5 — Launch from the Profiles tab
 
-Click **🚀 Connect MasterDNSVPN** — opens a terminal and launches the VPN.
+Click the **📋 MasterDNS Profiles** tab at the top of the app.
+Select your saved profile and click **🚀 Launch VPN** — the VPN starts immediately.
+To change MTU or other options first, edit them in the profile and click **💾 Save Changes**, then launch.
 
 ---
 
@@ -232,7 +232,7 @@ If after saving you don't see `MasterDnsVPN` inside the country folder, follow t
 2. Find the binary inside (it may be called `MasterDnsVPN_Client` or similar)
 3. Rename it to exactly `MasterDnsVPN` (macOS/Linux) or `MasterDnsVPN.exe` (Windows)
 4. Place it in **the same folder as the KevinNet app**
-5. Run KevinNet again and click **Save Config Files** — it will copy it automatically
+5. Run KevinNet again and click **Save to MasterDNS Profiles** — it will copy it automatically
 
 **macOS only** — make it executable:
 ```bash

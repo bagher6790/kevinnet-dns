@@ -3428,15 +3428,15 @@ HELP = {
          "مرحله ۱: بررسی سریع زنده بودن (~200 هزار IP)\n"
          "مرحله ۲: تست عمیق ۶ معیاره — ★6/6 ◆4-5 ▸2-3 ·0-1\n"
          "مرحله ۳: تأیید واقعی تانل از طریق MasterDnsVPN — فیلتر اصلی"),
-        ("۶  روی 💾 ذخیره فایل‌ها کلیک کنید",
-         "پوشه کشور ساخته می‌شود با:\n"
+        ("۶  روی 💾 ذخیره در پروفایل‌های MasterDNS کلیک کنید",
+         "پروفایل با تنظیمات پیش‌فرض ذخیره می‌شود و پوشه خروجی ساخته می‌شود.\n"
          "• client_config.toml  •  client_resolvers.txt  •  MasterDnsVPN\n"
-         "پروفایل به صورت خودکار در تب پروفایل‌ها هم ذخیره می‌شود.\n"
          "اگر MasterDnsVPN در پوشه نبود، آن را از GitHub دانلود کنید\n"
          "و کنار این برنامه بگذارید، سپس دوباره ذخیره کنید."),
-        ("۷  روی 🚀 اتصال MasterDNSVPN کلیک کنید",
-         "ترمینال باز می‌شود و VPN با فایل‌های ذخیره‌شده راه‌اندازی می‌شود.\n"
-         "فقط بعد از ذخیره موفق فعال می‌شود."),
+        ("۷  به تب 📋 پروفایل‌های MasterDNS بروید",
+         "پروفایل ذخیره‌شده را انتخاب کنید.\n"
+         "روی 🚀 اتصال کلیک کنید — VPN با فایل‌های همان پروفایل راه‌اندازی می‌شود.\n"
+         "یا ابتدا تنظیمات مانند MTU را تغییر دهید و ذخیره کنید، سپس اتصال بزنید."),
         ("📋  تب پروفایل‌ها — ویرایش بدون اسکن مجدد",
          "هر اسکن ذخیره‌شده یک پروفایل می‌سازد. در تب پروفایل‌ها:\n"
          "• پروفایل‌های قبلی را باز کنید و تنظیمات را تغییر دهید\n"
@@ -3479,15 +3479,15 @@ HELP = {
          "Phase 1: Quick alive check (~200k IPs)\n"
          "Phase 2: Full 6-check scoring — ★6/6 ◆4-5 ▸2-3 ·0-1\n"
          "Phase 3: Real tunnel E2E via MasterDnsVPN — the true filter"),
-        ("6  Click 💾 Save Config Files",
-         "Creates the country folder with:\n"
+        ("6  Click 💾 Save to MasterDNS Profiles",
+         "Saves the profile with default options and writes the output folder:\n"
          "• client_config.toml  •  client_resolvers.txt  •  MasterDnsVPN\n"
-         "The profile is also saved automatically to the Profiles tab.\n"
          "If MasterDnsVPN is missing, download it from GitHub\n"
          "and place it next to this app, then save again."),
-        ("7  Click 🚀 Connect MasterDNSVPN",
-         "Opens a terminal and launches the VPN with your saved config.\n"
-         "Only becomes active after a successful save."),
+        ("7  Go to the 📋 MasterDNS Profiles tab",
+         "Select the saved profile.\n"
+         "Click 🚀 Launch VPN — starts the VPN with that profile's files.\n"
+         "Or edit options like MTU first, save, then launch."),
         ("📋  Profiles Tab — edit options without re-scanning",
          "Every saved scan creates a profile. In the Profiles tab:\n"
          "• Re-open any previous scan and change its settings\n"
@@ -3840,9 +3840,7 @@ class App(tk.Tk):
                         f"{'✓ مرحله ۳ کامل:' if fa else '✓ Phase 3 done:'} "
                         f"{n} {'resolver تأیید E2E شده' if fa else 'E2E-verified resolvers'} "
                         f"{'آماده ذخیره هستند' if fa else 'ready to save'}")
-                    # Auto-save with defaults so Launch VPN works immediately
-                    if verified:
-                        self._save_configs_silent()
+
         except queue.Empty:
             pass
         except Exception:
@@ -4587,7 +4585,7 @@ class App(tk.Tk):
 
         mk_btn("btn_scan",    "▶  Start Scan",           "▶  شروع اسکن",           ACCENT,    SCAN_FG, self._start_scan)
         mk_btn("btn_stop",    "■  Stop",                  "■  توقف",                DANGER,    "#000000", self._stop_scan,    "disabled")
-        mk_btn("btn_save",    "💾  Save Config Files",    "💾  ذخیره فایل‌ها",      BLUE,      SAVE_FG, self._save_configs, "disabled")
+        mk_btn("btn_save",    "💾  Save to MasterDNS Profiles", "💾  ذخیره در پروفایل‌های MasterDNS", BLUE, SAVE_FG, self._save_configs, "disabled")
         mk_btn("btn_clear",   "🗑  Clear",                 "🗑  پاک کردن",            BORDER,    CLEAR_FG,self._clear)
 
     # ── RIGHT PANEL ─────────────────────────────────────────────
@@ -4735,7 +4733,7 @@ class App(tk.Tk):
         for wkey, fa_t, en_t in [
             ("btn_scan",    "▶  شروع اسکن",           "▶  Start Scan"),
             ("btn_stop",    "■  توقف",                "■  Stop"),
-            ("btn_save",    "💾  ذخیره فایل‌ها",      "💾  Save Config Files"),
+            ("btn_save",    "💾  ذخیره در پروفایل‌های MasterDNS", "💾  Save to MasterDNS Profiles"),
             ("btn_clear",   "🗑  پاک کردن",            "🗑  Clear"),
         ]:
             W[wkey].config(text=fa_t if fa else en_t,
@@ -4957,7 +4955,6 @@ class App(tk.Tk):
             self._W["btn_scan"].config(state="normal",  bg=ACCENT,  fg="#000000", disabledforeground=DIS_FG)
             if found:
                 self._W["btn_save"].config(state="normal",  bg=BLUE,   fg="#000000", disabledforeground=DIS_FG)
-                self._save_configs_silent()
             self._W["status_lbl"].config(
                 text=f"● {'اتمام' if fa else 'Done'}  —  {found} {'یافت‌شده' if fa else 'found'}",
                 fg=GREEN)
