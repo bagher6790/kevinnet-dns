@@ -211,21 +211,43 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
+      # Detect whether this is a beta/pre-release tag.
+      # Any tag containing "-beta", "-alpha", or "-rc" is treated as a pre-release.
+      - name: Detect pre-release
+        id: prerelease
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" == *"-beta"* ]] || [[ "$TAG" == *"-alpha"* ]] || [[ "$TAG" == *"-rc"* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "release_label=Beta" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "release_label=Release" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: release_files/
       - name: List files
         run: find release_files/ -type f | sort
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           name: "KevinNet DNS ${{ github.ref_name }}"
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
           body: |
-            ## KevinNet DNS ${{ github.ref_name }}
+            ## KevinNet DNS ${{ github.ref_name }}${{ steps.prerelease.outputs.is_prerelease == 'true' && ' — Beta' || '' }}
 
             Companion tool for [MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN)
             by [Kevin Haji](https://kevinhaji.com)
+
+            ${{ steps.prerelease.outputs.is_prerelease == 'true' && '> ⚠️ **This is a beta release.** It may contain bugs. The stable release remains on the [latest page](../../releases/latest).' || '' }}
+
+            ### What's new in this release
+            See [README.md](README.md) for full documentation including the new Profiles tab and Iran-optimised settings guide.
 
             ### Download for your platform:
 
@@ -255,4 +277,3 @@ jobs:
             release_files/Linux-x64/KevinNet_Linux_x64
             release_files/Linux-ARM64/KevinNet_Linux_ARM64
           draft: false
-          prerelease: false
