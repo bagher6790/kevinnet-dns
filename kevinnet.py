@@ -72,20 +72,14 @@ def get_masterdns_exe() -> Path | None:
         return local
 
     # 2. Bundled inside PyInstaller temp dir (_MEIPASS)
+    # Return the _MEIPASS path directly — write_profile_files copies it to the
+    # country folder. We never copy to app_dir() to avoid leaving the binary
+    # sitting next to the app after every save.
     if getattr(sys, "frozen", False):
-        meipass  = Path(getattr(sys, "_MEIPASS", ""))
-        bundled  = meipass / fname
+        meipass = Path(getattr(sys, "_MEIPASS", ""))
+        bundled = meipass / fname
         if bundled.exists():
-            # Copy out to app_dir so it persists after _MEIPASS cleanup
-            try:
-                import shutil as _sh
-                dest = app_dir() / fname
-                _sh.copy2(str(bundled), str(dest))
-                if sys.platform != "win32":
-                    dest.chmod(dest.stat().st_mode | 0o755)
-                return dest
-            except Exception:
-                return bundled   # fallback: use _MEIPASS path directly
+            return bundled
 
     # 3. Next to the .py script (running from source)
     src_local = Path(__file__).resolve().parent / fname
@@ -3448,9 +3442,9 @@ HELP = {
          "• پروفایل‌های قبلی را باز کنید و تنظیمات را تغییر دهید\n"
          "• ذخیره کنید تا client_config.toml فوری بازنویسی شود\n"
          "• مستقیم از پروفایل VPN را راه‌اندازی کنید\n"
-         "• پروفایل‌های قدیمی را حذف کنید (با یا بدون پوشه خروجی)"),
+         "• پروفایل‌های قدیمی را حذف کنید"),
         ("🔧  مقادیر بهینه برای ایران (در پروفایل‌ها)",
-         "روش رمزنگاری:   1 — XOR          کمترین سربار در DNS\n"
+         "روش رمزنگاری:    1 — XOR          کمترین سربار در DNS\n"
          "استراتژی بالانس: 3 — Least Loss   افت پکت بالای ایران\n"
          "تکرار بسته:      2 یا 3           افزونگی در شبکه پر افت\n"
          "Max Upload MTU:  80–100           query کوچک‌تر = کمتر DPI\n"
@@ -3495,11 +3489,11 @@ HELP = {
          "Opens a terminal and launches the VPN with your saved config.\n"
          "Only becomes active after a successful save."),
         ("📋  Profiles Tab — edit options without re-scanning",
-         "Every saved scan creates a profile. In the Profiles tab you can:\n"
+         "Every saved scan creates a profile. In the Profiles tab:\n"
          "• Re-open any previous scan and change its settings\n"
          "• Save changes — instantly rewrites client_config.toml\n"
          "• Launch VPN directly from any profile\n"
-         "• Delete old profiles (with or without the output folder)"),
+         "• Delete old profiles cleanly"),
         ("🔧  Iran-optimised values (Profile options)",
          "Encryption Method:   1 — XOR          lowest overhead in DNS\n"
          "Balancing Strategy:  3 — Least Loss    high packet loss in Iran\n"
@@ -3525,23 +3519,21 @@ def show_help(parent, lang):
     d.grab_set()
     ff = FA if lang == "fa" else F
 
-    # ── Fixed header ─────────────────────────────────────────────
     tk.Label(d, text=title, bg=PANEL, fg=ACCENT,
              font=ff(14, "bold"), pady=16, padx=24).pack(fill="x")
     tk.Frame(d, bg=BORDER, height=1).pack(fill="x", padx=24)
 
-    # ── Scrollable body ──────────────────────────────────────────
     scroll_frame = tk.Frame(d, bg=PANEL)
-    scroll_frame.pack(fill="both", expand=True, padx=0, pady=0)
+    scroll_frame.pack(fill="both", expand=True)
 
-    canvas = tk.Canvas(scroll_frame, bg=PANEL, bd=0, highlightthickness=0)
+    canvas   = tk.Canvas(scroll_frame, bg=PANEL, bd=0, highlightthickness=0)
     scrollbar = ttk.Scrollbar(scroll_frame, orient="vertical",
                                command=canvas.yview)
     scrollbar.pack(side="right", fill="y")
     canvas.pack(side="left", fill="both", expand=True)
     canvas.configure(yscrollcommand=scrollbar.set)
 
-    body = tk.Frame(canvas, bg=PANEL)
+    body    = tk.Frame(canvas, bg=PANEL)
     body_win = canvas.create_window((0, 0), window=body, anchor="nw")
 
     def _on_body_configure(e):
@@ -3551,7 +3543,6 @@ def show_help(parent, lang):
     body.bind("<Configure>", _on_body_configure)
     canvas.bind("<Configure>", _on_canvas_resize)
 
-    # Mouse wheel scroll — works on all platforms
     def _on_mousewheel(e):
         if sys.platform == "darwin":
             canvas.yview_scroll(-1 * int(e.delta), "units")
@@ -3579,7 +3570,6 @@ def show_help(parent, lang):
                  anchor="w", padx=20, justify="left",
                  wraplength=510).pack(fill="x")
 
-    # ── Fixed footer ─────────────────────────────────────────────
     tk.Frame(d, bg=BORDER, height=1).pack(fill="x", padx=24)
     tk.Button(d,
               text="متوجه شدم  ✓" if lang == "fa" else "Got it  ✓",
@@ -3588,7 +3578,6 @@ def show_help(parent, lang):
               activebackground="#00bfa5", activeforeground="#000000",
               command=d.destroy).pack(pady=14)
 
-    # ── Size and centre — cap at 90% of screen height ────────────
     d.update_idletasks()
     screen_h = d.winfo_screenheight()
     screen_w = d.winfo_screenwidth()
@@ -3598,6 +3587,132 @@ def show_help(parent, lang):
     py = parent.winfo_y() + parent.winfo_height() // 2
     d.geometry(f"{dlg_w}x{dlg_h}+{px - dlg_w//2}+{py - dlg_h//2}")
     d.minsize(480, 400)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  PROFILES — persist scan results + key config options
+# ═══════════════════════════════════════════════════════════════
+
+PROFILE_DEFAULTS: dict = {
+    "listen_port":        18000,
+    "encryption_method":  1,
+    "balancing_strategy": 2,
+    "packet_duplication": 2,
+    "min_upload_mtu":     38,
+    "max_upload_mtu":     150,
+    "min_download_mtu":   500,
+    "max_download_mtu":   900,
+    "log_level":          "INFO",
+}
+
+ENC_LABELS = [
+    "0 — None", "1 — XOR", "2 — ChaCha20",
+    "3 — AES-128-GCM", "4 — AES-192-GCM", "5 — AES-256-GCM",
+]
+BAL_LABELS = [
+    "1 — Random", "2 — Round Robin",
+    "3 — Least Loss", "4 — Lowest Latency",
+]
+LOG_LABELS = ["DEBUG", "INFO", "WARN", "ERROR"]
+
+
+def profiles_dir() -> Path:
+    d = app_dir() / "profiles"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def load_all_profiles() -> dict:
+    import json as _json
+    result = {}
+    files = sorted(
+        profiles_dir().glob("*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for f in files:
+        try:
+            data = _json.loads(f.read_text(encoding="utf-8"))
+            result[f.stem] = data
+        except Exception:
+            pass
+    return result
+
+
+def save_new_profile(profile: dict) -> str:
+    import json as _json
+    safe = "".join(
+        c if c.isalnum() or c in "-_ " else "_"
+        for c in profile.get("name", "profile")
+    ).strip().replace(" ", "_")
+    ts    = datetime.now().strftime("%Y%m%d_%H%M%S")
+    fname = f"{safe}_{ts}.json"
+    (profiles_dir() / fname).write_text(
+        _json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return fname[:-5]
+
+
+def update_profile(stem: str, profile: dict):
+    import json as _json
+    path = profiles_dir() / f"{stem}.json"
+    path.write_text(
+        _json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def delete_profile(stem: str):
+    path = profiles_dir() / f"{stem}.json"
+    country_folder = None
+    if path.exists():
+        try:
+            import json as _json
+            data = _json.loads(path.read_text(encoding="utf-8"))
+            country_folder = data.get("country", "")
+        except Exception:
+            pass
+        path.unlink()
+    return country_folder
+
+
+def build_config_from_profile(profile: dict) -> str:
+    opts = {**PROFILE_DEFAULTS, **profile.get("options", {})}
+    ts   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cfg  = (CONFIG_TEMPLATE
+            .replace("{domain}",    profile.get("domain", ""))
+            .replace("{key}",       profile.get("key", ""))
+            .replace("{timestamp}", ts))
+    for k, v in opts.items():
+        cfg = cfg.replace(f"{{{k}}}", str(v))
+    return cfg
+
+
+def write_profile_files(profile: dict):
+    import shutil as _sh
+    country = profile.get("country", "output")
+    folder  = app_dir() / country
+    folder.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    (folder / "client_config.toml").write_text(
+        build_config_from_profile(profile), encoding="utf-8"
+    )
+    hdr = (RESOLVER_HEADER
+           .replace("{timestamp}", ts)
+           .replace("{country}",   country))
+    resolvers = profile.get("resolvers", [])
+    (folder / "client_resolvers.txt").write_text(
+        hdr + "\n".join(resolvers) + "\n", encoding="utf-8"
+    )
+    exe_src = get_masterdns_exe()
+    if exe_src:
+        exe_dst = folder / exe_src.name
+        try:
+            _sh.copy2(str(exe_src), str(exe_dst))
+            if sys.platform != "win32":
+                exe_dst.chmod(exe_dst.stat().st_mode | 0o111)
+        except Exception:
+            pass
+    return folder
 
 # ═══════════════════════════════════════════════════════════════
 #  MAIN APPLICATION
@@ -3626,6 +3741,12 @@ class App(tk.Tk):
         self._scanning  = False
         self._W         : dict = {}
         self._q         = queue.Queue()   # thread-safe result queue
+
+        # Profiles tab state
+        self._profiles      : dict = {}
+        self._sel_profile   : str | None = None
+        self._pname_var     : tk.StringVar | None = None
+        self._popt_vars     : dict = {}
 
         self._build_ui()
         self._set_icon()
@@ -3766,8 +3887,32 @@ class App(tk.Tk):
 
         tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
 
-        body = tk.Frame(self, bg=BG)
-        body.pack(fill="both", expand=True)
+        # ── TAB BAR ──────────────────────────────────────────────
+        tab_bar = tk.Frame(self, bg=PANEL, height=44)
+        tab_bar.pack(fill="x")
+        tab_bar.pack_propagate(False)
+
+        def make_tab(wkey, en_text, fa_text, cmd):
+            lbl = tk.Label(tab_bar,
+                           text=fa_text if self._lang == "fa" else en_text,
+                           bg=PANEL, fg=MUTED,
+                           font=F(11, "bold"),
+                           padx=24, pady=11, cursor="hand2")
+            lbl.pack(side="left")
+            lbl.bind("<Button-1>", lambda e: cmd())
+            W[wkey] = lbl
+
+        make_tab("tab_scanner",  "🔍  Scanner",      "🔍  اسکنر",      self._show_scanner)
+        make_tab("tab_profiles", "📋  Profiles",     "📋  پروفایل‌ها",  self._show_profiles)
+
+        tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
+
+        # ── CONTENT AREA — two views, only one shown at a time ───
+        self._scanner_view  = tk.Frame(self, bg=BG)
+        self._profiles_view = tk.Frame(self, bg=BG)
+
+        # ── Scanner view (original layout) ───────────────────────
+        body = self._scanner_view
 
         # Scrollable left panel — buttons always accessible even on small screens
         left_outer = tk.Frame(body, bg=BG, width=420)
@@ -3816,6 +3961,12 @@ class App(tk.Tk):
                    padx=(0, 16), pady=14)
         self._build_right(right)
 
+        # ── Profiles view ─────────────────────────────────────────
+        self._build_profiles_tab(self._profiles_view)
+
+        # Start on Scanner tab
+        self._show_scanner()
+
         # ── FOOTER — credit in ONE place only ──
         tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
         footer = tk.Frame(self, bg=PANEL, height=36)
@@ -3829,6 +3980,381 @@ class App(tk.Tk):
         W["status_lbl"] = tk.Label(
             footer, text="● Ready", bg=PANEL, fg=GREEN, font=F(9))
         W["status_lbl"].pack(side="right", padx=16)
+
+
+    # ── TAB SWITCHING ────────────────────────────────────────────
+    def _show_scanner(self):
+        self._profiles_view.pack_forget()
+        self._scanner_view.pack(fill="both", expand=True)
+        self._W["tab_scanner"].config(bg=ACCENT, fg="#000000")
+        self._W["tab_profiles"].config(bg=PANEL, fg=MUTED)
+
+    def _show_profiles(self):
+        self._scanner_view.pack_forget()
+        self._profiles_view.pack(fill="both", expand=True)
+        self._W["tab_scanner"].config(bg=PANEL, fg=MUTED)
+        self._W["tab_profiles"].config(bg=ACCENT, fg="#000000")
+        self._refresh_profiles_list()
+
+    # ── PROFILES TAB ─────────────────────────────────────────────
+    def _build_profiles_tab(self, parent):
+        W  = self._W
+        fa = self._lang == "fa"
+
+        cols = tk.Frame(parent, bg=BG)
+        cols.pack(fill="both", expand=True, padx=16, pady=14)
+
+        # Left: list
+        list_frame = tk.Frame(cols, bg=CARD, width=230,
+                              highlightbackground=BORDER, highlightthickness=1)
+        list_frame.pack(side="left", fill="y", padx=(0, 12))
+        list_frame.pack_propagate(False)
+
+        tk.Label(list_frame,
+                 text="پروفایل‌ها" if fa else "Saved Profiles",
+                 bg=BORDER, fg=MUTED, font=F(9, "bold"),
+                 padx=12, pady=7, anchor="w").pack(fill="x")
+
+        list_canvas = tk.Canvas(list_frame, bg=CARD, bd=0, highlightthickness=0)
+        list_scroll = ttk.Scrollbar(list_frame, orient="vertical",
+                                    command=list_canvas.yview)
+        list_scroll.pack(side="right", fill="y")
+        list_canvas.pack(side="left", fill="both", expand=True)
+
+        self._plist_inner = tk.Frame(list_canvas, bg=CARD)
+        self._plist_win   = list_canvas.create_window(
+            (0, 0), window=self._plist_inner, anchor="nw")
+
+        def _lcfg(e): list_canvas.configure(scrollregion=list_canvas.bbox("all"))
+        def _lrsz(e): list_canvas.itemconfig(self._plist_win, width=e.width)
+        self._plist_inner.bind("<Configure>", _lcfg)
+        list_canvas.bind("<Configure>", _lrsz)
+        W["plist_canvas"] = list_canvas
+
+        # Right: detail
+        detail_outer = tk.Frame(cols, bg=BG)
+        detail_outer.pack(side="left", fill="both", expand=True)
+
+        W["pdetail_empty"] = tk.Label(
+            detail_outer,
+            text="یک پروفایل انتخاب کنید" if fa else "Select a profile to view or edit",
+            bg=BG, fg=MUTED, font=F(12))
+        W["pdetail_empty"].pack(expand=True)
+
+        det_canvas = tk.Canvas(detail_outer, bg=BG, bd=0, highlightthickness=0)
+        det_scroll = ttk.Scrollbar(detail_outer, orient="vertical",
+                                   command=det_canvas.yview)
+        det_scroll.pack(side="right", fill="y")
+        det_canvas.pack(side="left", fill="both", expand=True)
+
+        detail = tk.Frame(det_canvas, bg=BG)
+        det_win = det_canvas.create_window((0, 0), window=detail, anchor="nw")
+
+        def _dcfg(e): det_canvas.configure(scrollregion=det_canvas.bbox("all"))
+        def _drsz(e): det_canvas.itemconfig(det_win, width=e.width)
+        detail.bind("<Configure>", _dcfg)
+        det_canvas.bind("<Configure>", _drsz)
+
+        W["pdetail_scroll"]    = det_canvas
+        W["pdetail_frame"]     = detail
+        W["pdetail_scrollbar"] = det_scroll
+        det_canvas.pack_forget()
+        det_scroll.pack_forget()
+
+        # Card helper
+        def card(parent, en_hdr, fa_hdr, col=ACCENT):
+            c = tk.Frame(parent, bg=CARD,
+                         highlightbackground=BORDER, highlightthickness=1)
+            c.pack(fill="x", pady=(0, 10))
+            tk.Label(c, text=fa_hdr if fa else en_hdr,
+                     bg=BORDER, fg=col, font=F(10, "bold"),
+                     padx=12, pady=6, anchor="w").pack(fill="x")
+            inner = tk.Frame(c, bg=CARD)
+            inner.pack(fill="x", padx=14, pady=8)
+            return inner
+
+        meta = card(detail, "⚙  Profile Info", "⚙  اطلاعات پروفایل")
+
+        tk.Label(meta, text="نام پروفایل" if fa else "Profile Name",
+                 bg=CARD, fg=MUTED, font=F(9), anchor="w").pack(fill="x")
+        self._pname_var = tk.StringVar()
+        tk.Entry(meta, textvariable=self._pname_var,
+                 bg=INPUT, fg=TEXT, insertbackground=ACCENT,
+                 relief="flat", bd=0, font=FM(11),
+                 highlightbackground=BORDER, highlightthickness=1,
+                 highlightcolor=ACCENT).pack(fill="x", ipady=8, pady=(2, 6))
+
+        W["pmeta_info"] = tk.Label(meta, text="", bg=CARD, fg=MUTED,
+                                   font=F(9), anchor="w", justify="left")
+        W["pmeta_info"].pack(fill="x")
+
+        # Options card
+        opt = card(detail, "🔧  Key Options", "🔧  تنظیمات کلیدی", BLUE)
+        popt = {}
+
+        def opt_row(wkey, en_lbl, fa_lbl, widget_builder):
+            row = tk.Frame(opt, bg=CARD)
+            row.pack(fill="x", pady=3)
+            tk.Label(row, text=fa_lbl if fa else en_lbl,
+                     bg=CARD, fg=TEXT,
+                     font=FA(9) if fa else F(9),
+                     anchor="w", width=24).pack(side="left")
+            widget_builder(row, wkey)
+
+        def spinbox_b(lo, hi, default):
+            def make(parent, wkey):
+                var = tk.IntVar(value=default)
+                tk.Spinbox(parent, from_=lo, to=hi, textvariable=var,
+                           bg=INPUT, fg=TEXT, insertbackground=ACCENT,
+                           buttonbackground=BORDER, relief="flat", bd=0,
+                           font=FM(10), width=9,
+                           highlightbackground=BORDER, highlightthickness=1,
+                           highlightcolor=ACCENT).pack(side="left")
+                popt[wkey] = var
+            return make
+
+        def combo_b(values, default):
+            def make(parent, wkey):
+                var = tk.StringVar(value=default)
+                cb = ttk.Combobox(parent, textvariable=var,
+                                  values=values, state="readonly",
+                                  width=26, font=FM(10))
+                cb.pack(side="left")
+                popt[wkey] = var
+            return make
+
+        opt_row("listen_port",        "Listen Port",         "پورت محلی",
+                spinbox_b(1024, 65535, 18000))
+        opt_row("encryption_method",  "Encryption Method",   "روش رمزنگاری",
+                combo_b(ENC_LABELS, ENC_LABELS[1]))
+        opt_row("balancing_strategy", "Balancing Strategy",  "استراتژی بالانس",
+                combo_b(BAL_LABELS, BAL_LABELS[1]))
+        opt_row("packet_duplication", "Packet Duplication",  "تکرار بسته",
+                spinbox_b(1, 8, 2))
+        opt_row("min_upload_mtu",     "Min Upload MTU",       "حداقل MTU آپلود",
+                spinbox_b(10, 500, 38))
+        opt_row("max_upload_mtu",     "Max Upload MTU",       "حداکثر MTU آپلود",
+                spinbox_b(10, 500, 150))
+        opt_row("min_download_mtu",   "Min Download MTU",     "حداقل MTU دانلود",
+                spinbox_b(100, 2000, 500))
+        opt_row("max_download_mtu",   "Max Download MTU",     "حداکثر MTU دانلود",
+                spinbox_b(100, 2000, 900))
+        opt_row("log_level",          "Log Level",            "سطح لاگ",
+                combo_b(LOG_LABELS, "INFO"))
+
+        self._popt_vars = popt
+
+        # Action buttons
+        btn_row = tk.Frame(detail, bg=BG)
+        btn_row.pack(fill="x", pady=(4, 14))
+
+        def act_btn(wkey, en, fa_t, bg_c, fg_c, cmd):
+            b = tk.Button(btn_row, text=fa_t if fa else en,
+                          bg=bg_c, fg=fg_c,
+                          font=F(10, "bold"), relief="flat", bd=0,
+                          padx=14, pady=9, cursor="hand2",
+                          activebackground=bg_c, activeforeground=fg_c,
+                          command=cmd)
+            b.pack(side="left", padx=(0, 6))
+            W[wkey] = b
+
+        act_btn("pbtn_save",   "💾 Save Changes",  "💾 ذخیره تغییرات",
+                BLUE,   "#000000", self._profile_save_changes)
+        act_btn("pbtn_launch", "🚀 Launch VPN",    "🚀 اتصال",
+                PURPLE, BTN_TEXT,  self._profile_launch)
+        act_btn("pbtn_delete", "🗑 Delete",          "🗑 حذف",
+                DANGER, "#000000", self._profile_delete)
+
+    def _show_profile_detail(self, show: bool):
+        W = self._W
+        if show:
+            W["pdetail_empty"].pack_forget()
+            W["pdetail_scroll"].pack(side="left", fill="both", expand=True)
+            W["pdetail_scrollbar"].pack(side="right", fill="y")
+        else:
+            W["pdetail_scroll"].pack_forget()
+            W["pdetail_scrollbar"].pack_forget()
+            W["pdetail_empty"].pack(expand=True)
+
+    def _refresh_profiles_list(self):
+        self._profiles = load_all_profiles()
+        inner = self._plist_inner
+        for w in inner.winfo_children():
+            w.destroy()
+        fa = self._lang == "fa"
+
+        if not self._profiles:
+            tk.Label(inner,
+                     text="هنوز پروفایلی وجود ندارد\nابتدا اسکن انجام دهید" if fa
+                          else "No profiles yet.\nRun a scan first.",
+                     bg=CARD, fg=MUTED,
+                     font=FA(9) if fa else F(9),
+                     justify="center", padx=12, pady=20).pack()
+            self._sel_profile = None
+            self._show_profile_detail(False)
+            return
+
+        for stem, p in self._profiles.items():
+            self._make_profile_row(inner, stem, p)
+
+        if self._sel_profile and self._sel_profile in self._profiles:
+            self._select_profile(self._sel_profile)
+        elif self._profiles:
+            self._select_profile(next(iter(self._profiles)))
+
+    def _make_profile_row(self, parent, stem, p):
+        fa   = self._lang == "fa"
+        name = p.get("name", stem)
+        date = p.get("date", "")[:10]
+        cnt  = p.get("resolver_count", len(p.get("resolvers", [])))
+
+        row = tk.Frame(parent, bg=CARD, cursor="hand2")
+        row.pack(fill="x")
+        sel_bar = tk.Frame(row, bg=CARD, width=3)
+        sel_bar.pack(side="left", fill="y")
+        info = tk.Frame(row, bg=CARD)
+        info.pack(side="left", fill="x", expand=True, padx=8, pady=8)
+        name_lbl = tk.Label(info, text=name, bg=CARD, fg=TEXT,
+                            font=F(10, "bold"), anchor="w")
+        name_lbl.pack(fill="x")
+        tk.Label(info, text=f"{date}  ·  {cnt} resolvers",
+                 bg=CARD, fg=MUTED, font=F(8), anchor="w").pack(fill="x")
+        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x")
+
+        def _on_click(e, s=stem):
+            self._select_profile(s)
+        for w in (row, sel_bar, info, name_lbl):
+            w.bind("<Button-1>", _on_click)
+
+        row._stem     = stem
+        row._sel_bar  = sel_bar
+        row._name_lbl = name_lbl
+
+    def _select_profile(self, stem: str):
+        self._sel_profile = stem
+        p   = self._profiles.get(stem, {})
+        fa  = self._lang == "fa"
+        W   = self._W
+
+        for row in self._plist_inner.winfo_children():
+            if isinstance(row, tk.Frame) and hasattr(row, "_stem"):
+                if row._stem == stem:
+                    row._sel_bar.config(bg=ACCENT)
+                    row._name_lbl.config(fg=ACCENT)
+                else:
+                    row._sel_bar.config(bg=CARD)
+                    row._name_lbl.config(fg=TEXT)
+
+        opts = {**PROFILE_DEFAULTS, **p.get("options", {})}
+        cnt  = p.get("resolver_count", len(p.get("resolvers", [])))
+        date = p.get("date", "")
+
+        self._pname_var.set(p.get("name", stem))
+        domain_lbl = "دامنه" if fa else "Domain"
+        folder_lbl = "پوشه"  if fa else "Folder"
+        saved_lbl  = "تاریخ" if fa else "Saved"
+        W["pmeta_info"].config(
+            text=(f"{domain_lbl}: {p.get("domain","")}\n"
+                  f"{folder_lbl}: {p.get("country","")}\n"
+                  f"Resolvers: {cnt}    {saved_lbl}: {date}"))
+
+
+
+        popt = self._popt_vars
+        popt["listen_port"].set(opts.get("listen_port", 18000))
+        enc_match = next((l for l in ENC_LABELS
+                          if l.startswith(str(opts.get("encryption_method", 1)))),
+                         ENC_LABELS[1])
+        popt["encryption_method"].set(enc_match)
+        bal_match = next((l for l in BAL_LABELS
+                          if l.startswith(str(opts.get("balancing_strategy", 2)))),
+                         BAL_LABELS[1])
+        popt["balancing_strategy"].set(bal_match)
+        popt["packet_duplication"].set(opts.get("packet_duplication", 2))
+        popt["min_upload_mtu"].set(opts.get("min_upload_mtu", 38))
+        popt["max_upload_mtu"].set(opts.get("max_upload_mtu", 150))
+        popt["min_download_mtu"].set(opts.get("min_download_mtu", 500))
+        popt["max_download_mtu"].set(opts.get("max_download_mtu", 900))
+        log_val = opts.get("log_level", "INFO")
+        popt["log_level"].set(log_val if log_val in LOG_LABELS else "INFO")
+
+        self._show_profile_detail(True)
+
+    def _read_popt_vars(self) -> dict:
+        popt = self._popt_vars
+        return {
+            "listen_port":        popt["listen_port"].get(),
+            "encryption_method":  int(popt["encryption_method"].get()[0]),
+            "balancing_strategy": int(popt["balancing_strategy"].get()[0]),
+            "packet_duplication": popt["packet_duplication"].get(),
+            "min_upload_mtu":     popt["min_upload_mtu"].get(),
+            "max_upload_mtu":     popt["max_upload_mtu"].get(),
+            "min_download_mtu":   popt["min_download_mtu"].get(),
+            "max_download_mtu":   popt["max_download_mtu"].get(),
+            "log_level":          popt["log_level"].get(),
+        }
+
+    def _profile_save_changes(self):
+        stem = self._sel_profile
+        if not stem:
+            return
+        p  = dict(self._profiles[stem])
+        fa = self._lang == "fa"
+        p["name"]    = self._pname_var.get().strip() or p.get("name", stem)
+        p["options"] = self._read_popt_vars()
+        update_profile(stem, p)
+        try:
+            folder = write_profile_files(p)
+            self._log(f"{'پروفایل بروزرسانی شد:' if fa else 'Profile updated:'} {folder}")
+        except Exception as e:
+            self._log(f"{'خطا:' if fa else 'Error:'} {e}")
+        self._profiles[stem] = p
+        self._refresh_profiles_list()
+        messagebox.showinfo(
+            "Saved" if not fa else "ذخیره شد",
+            "تغییرات ذخیره شد" if fa else "Changes saved")
+
+    def _profile_launch(self):
+        stem = self._sel_profile
+        if not stem:
+            return
+        p      = self._profiles[stem]
+        folder = app_dir() / p.get("country", "output")
+        if not folder.exists():
+            try:
+                folder = write_profile_files(p)
+            except Exception as e:
+                messagebox.showerror("", str(e))
+                return
+        self._saved_folder = folder
+        self._launch_vpn()
+
+    def _profile_delete(self):
+        stem = self._sel_profile
+        if not stem:
+            return
+        fa   = self._lang == "fa"
+        name = self._profiles[stem].get("name", stem)
+        if not messagebox.askyesno(
+                "Delete" if not fa else "حذف",
+                f"{'حذف پروفایل' if fa else 'Delete profile'} '{name}'?"):
+            return
+        country_folder = delete_profile(stem)
+        if country_folder:
+            folder_path = app_dir() / country_folder
+            if folder_path.exists():
+                if messagebox.askyesno(
+                        "Delete folder?" if not fa else "حذف پوشه؟",
+                        f"{'پوشه خروجی هم حذف شود؟' if fa else 'Also delete output folder?'}"
+                        f"\n{folder_path}"):
+                    import shutil as _sh
+                    try:
+                        _sh.rmtree(str(folder_path))
+                    except Exception as e:
+                        self._log(f"{'خطا در حذف پوشه:' if fa else 'Folder delete error:'} {e}")
+        self._sel_profile = None
+        self._show_profile_detail(False)
+        self._refresh_profiles_list()
 
     # ── LEFT PANEL ──────────────────────────────────────────────
     def _build_left(self, parent):
@@ -4531,6 +5057,24 @@ class App(tk.Tk):
                 "\n  (MasterDnsVPN not found — place it next to this app)"
             )
 
+        # ── Save profile to profiles/ ─────────────────────────────
+        try:
+            profile = {
+                "name":           country,
+                "date":           ts,
+                "domain":         domain,
+                "key":            key,
+                "country":        country,
+                "resolver_count": len(self._found_ips),
+                "resolvers":      list(self._found_ips),
+                "options":        dict(PROFILE_DEFAULTS),
+            }
+            save_new_profile(profile)
+            self._log(
+                f"{'پروفایل ذخیره شد — تب پروفایل‌ها را بررسی کنید' if fa else 'Profile saved — check the Profiles tab to edit MTU and options'}")
+        except Exception as e:
+            self._log(f"{'خطا در ذخیره پروفایل:' if fa else 'Profile save error:'} {e}")
+
         self._saved_folder = folder
         self._W["btn_connect"].config(state="normal",  bg=CONN_BG, fg="#000000", disabledforeground=DIS_FG)
         self._W["status_lbl"].config(
@@ -4545,7 +5089,8 @@ class App(tk.Tk):
             f"\n{folder}\n"
             f"\n• client_config.toml"
             f"\n• client_resolvers.txt"
-            f"{exe_note}")
+            f"{exe_note}\n\n"
+            f"{'برای تغییر MTU به تب پروفایل‌ها بروید' if fa else 'Go to the Profiles tab to edit MTU and other options'}.")
 
 
 # ═══════════════════════════════════════════════════════════════
