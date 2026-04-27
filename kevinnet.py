@@ -3439,13 +3439,18 @@ HELP = {
          "• MasterDNS — DNS tunnel با Resolver‌های متعدد، بهترین برای ایران\n"
          "• VayDNS    — DNS tunnel با DoH/DoT/UDP، رمزنگاری Noise پروتکل"),
 
-        ("پیش‌نیاز: سرور شخصی",
-         "برای استفاده، به یک سرور VPS خارج از ایران نیاز دارید.\n"
-         "سرور باید نصب شده باشد — برای راهنمای نصب README را ببینید.\n\n"
-         "قبل از شروع این‌ها را از سرور آماده کنید:\n"
-         "• دامنه تانل (مثال: v.example.com)\n"
-         "• برای MasterDNS: کلید رمزنگاری ۳۲ کاراکتری (فایل encrypt_key.txt)\n"
-         "• برای VayDNS: کلید عمومی ۶۴ کاراکتری hex (فایل server.pub)"),
+        ("پیش‌نیاز: سرور و دامنه",
+         "۱. یک VPS لینوکسی خارج از ایران (Hetzner، DigitalOcean و...)\n"
+         "۲. یک دامنه با دو رکورد DNS:\n"
+         "   • رکورد A  — ns.yourdomain.com  →  IP سرور (glue record)\n"
+         "   • رکورد NS — v.yourdomain.com   →  ns.yourdomain.com\n"
+         "   دامنه تانل شما v.yourdomain.com می‌شود\n\n"
+         "۳. نصب VPN روی سرور (راهنما در README)\n\n"
+         "MasterDNS: بعد از نصب فایل encrypt_key.txt روی سرور دارید\n"
+         "           → محتوای آن کلید ۳۲ کاراکتری است\n\n"
+         "VayDNS:    بعد از نصب فایل server.pub روی سرور دارید\n"
+         "           → روی سرور cat server.pub بزنید\n"
+         "           → رشته hex 64 کاراکتری که می‌بینید کلید عمومی است"),
 
         ("۱  نوع VPN را انتخاب کنید",
          "MasterDNS:  اگر سرور MasterDnsVPN نصب کرده‌اید\n"
@@ -3537,13 +3542,18 @@ HELP = {
          "• MasterDNS — DNS tunnel with multiple resolvers, best for Iran\n"
          "• VayDNS    — DNS tunnel with DoH/DoT/UDP, Noise protocol encryption"),
 
-        ("Prerequisite: a personal server",
-         "You need a VPS server outside Iran, with the VPN server software installed.\n"
-         "See the README for server installation guides.\n\n"
-         "Have these ready from your server before starting:\n"
-         "• Tunnel domain  (e.g. v.example.com)\n"
-         "• MasterDNS: 32-char encryption key  (encrypt_key.txt)\n"
-         "• VayDNS:    64-char hex public key  (server.pub)"),
+        ("Prerequisite: server and domain",
+         "1. A Linux VPS outside Iran (Hetzner, DigitalOcean, etc.)\n"
+         "2. A domain with two DNS records:\n"
+         "   • A record  — ns.yourdomain.com  →  your server IP  (glue)\n"
+         "   • NS record — v.yourdomain.com   →  ns.yourdomain.com\n"
+         "   Your tunnel domain is v.yourdomain.com\n\n"
+         "3. VPN server installed on the VPS (see README for guides)\n\n"
+         "MasterDNS: after install you have encrypt_key.txt on the server\n"
+         "           → its contents is your 32-char key\n\n"
+         "VayDNS:    after install you have server.pub on the server\n"
+         "           → run: cat server.pub\n"
+         "           → the 64-char hex string you see is your public key"),
 
         ("1  Choose VPN type",
          "MasterDNS:  if you installed MasterDnsVPN on your server\n"
