@@ -4273,9 +4273,17 @@ def get_vaydns_exe() -> Path | None:
         search_dirs.append(Path(getattr(sys, "_MEIPASS", "")))
 
     for d in search_dirs:
+        # 1. Try exact candidate names first
         for fname in candidates:
             p = d / fname
             if p.exists():
+                return p
+        # 2. Glob fallback — catch any naming variant the user might have used
+        #    e.g. vaydns-client_darwin_arm64, vaydns-client-macos-arm64, etc.
+        matches = sorted(d.glob("vaydns-client*"))
+        for p in matches:
+            # Skip .zip, .tar.gz etc — only actual executables
+            if p.suffix not in (".zip", ".gz", ".tar", ".txt", ".md"):
                 return p
     return None
 
@@ -5134,10 +5142,11 @@ class App(tk.Tk):
         def opt_row(wkey, en_lbl, fa_lbl, widget_builder):
             row = tk.Frame(opt, bg=CARD)
             row.pack(fill="x", pady=3)
-            tk.Label(row, text=fa_lbl if fa else en_lbl,
-                     bg=CARD, fg=TEXT,
-                     font=FA(9) if fa else F(9),
-                     anchor="w", width=22).pack(side="left")
+            lbl = tk.Label(row, text=fa_lbl if fa else en_lbl,
+                           bg=CARD, fg=TEXT,
+                           font=FA(9) if fa else F(9),
+                           anchor="w", wraplength=180, justify="left")
+            lbl.pack(side="left", fill="x", expand=True)
             widget_builder(row, wkey)
 
         def spinbox_b(lo, hi, default):
