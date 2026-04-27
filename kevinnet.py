@@ -4193,8 +4193,11 @@ class App(tk.Tk):
                     self._found_ips = list(verified)
                     self._W["btn_scan"].config(state="normal",  bg=ACCENT,  fg="#000000", disabledforeground=DIS_FG)
                     if verified:
-                        self._W["btn_save"].config(state="normal",  bg=BLUE,   fg="#000000", disabledforeground=DIS_FG)
-                        self._W["btn_vd_save"].config(state="normal", bg=PURPLE, fg=BTN_TEXT, disabledforeground=DIS_FG)
+                        mode = self._vpn_mode.get()
+                        if mode == "masterdns":
+                            self._W["btn_save"].config(state="normal", bg=BLUE, fg="#000000", disabledforeground=DIS_FG)
+                        else:
+                            self._W["btn_vd_save"].config(state="normal", bg=PURPLE, fg=BTN_TEXT, disabledforeground=DIS_FG)
                     n = len(verified)
                     self._W["badge"].config(
                         text=f"{n}  {'تأیید E2E' if fa else 'E2E verified'}")
@@ -5325,6 +5328,41 @@ class App(tk.Tk):
         self._vd_show_detail(False)
         self._vd_refresh_profiles_list()
 
+
+    # ── VPN MODE SWITCH ──────────────────────────────────────────
+    def _set_vpn_mode(self, mode: str):
+        """Switch between masterdns and vaydns mode in the scanner."""
+        self._vpn_mode.set(mode)
+        W  = self._W
+        fa = self._lang == "fa"
+
+        if mode == "masterdns":
+            # Pill highlight
+            W["pill_master"].config(bg=BLUE, fg="#000000")
+            W["pill_vaydns"].config(bg=BORDER, fg=MUTED)
+            # Show MasterDNS key, hide VayDNS key
+            self._vd_key_frame.pack_forget()
+            self._md_key_frame.pack(fill="x")
+            # Show MasterDNS save button, hide VayDNS save
+            W["btn_vd_save"].pack_forget()
+            W["btn_save"].pack(fill="x", padx=2)
+        else:  # vaydns
+            # Pill highlight
+            W["pill_master"].config(bg=BORDER, fg=MUTED)
+            W["pill_vaydns"].config(bg=PURPLE, fg=BTN_TEXT)
+            # Show VayDNS key, hide MasterDNS key
+            self._md_key_frame.pack_forget()
+            self._vd_key_frame.pack(fill="x")
+            # Show VayDNS save button, hide MasterDNS save
+            W["btn_save"].pack_forget()
+            W["btn_vd_save"].pack(fill="x", padx=2)
+
+        # Reset scan state whenever mode changes
+        self._found_ips.clear()
+        for row in self._W.get("tree", tk.Frame()).winfo_children():
+            try: row.destroy()
+            except: pass
+
     # ── LEFT PANEL ──────────────────────────────────────────────
     def _build_left(self, parent):
         W  = self._W
@@ -5381,18 +5419,54 @@ class App(tk.Tk):
             "subdomain pointing to your server  e.g. v.example.com",
             "ساب‌دامین که به سرور اشاره دارد  مثال: v.example.com")
 
+        # ── VPN Mode selector ──────────────────────────────────────
+        mode_frame = tk.Frame(c1, bg=CARD)
+        mode_frame.pack(fill="x", padx=14, pady=(10, 0))
+
+        tk.Label(mode_frame,
+                 text="نوع VPN" if fa else "VPN Type",
+                 bg=CARD, fg=TEXT,
+                 font=FA(11) if fa else F(11),
+                 anchor="w").pack(fill="x")
+
+        pill_row = tk.Frame(mode_frame, bg=CARD)
+        pill_row.pack(fill="x", pady=(6, 4))
+
+        self._vpn_mode = tk.StringVar(value="masterdns")
+
+        def make_pill(wkey, en, fa_t, value):
+            is_sel = (value == "masterdns")
+            b = tk.Button(pill_row,
+                          text=fa_t if fa else en,
+                          bg=BLUE if is_sel else BORDER,
+                          fg="#000000" if is_sel else MUTED,
+                          font=F(10, "bold"), relief="flat", bd=0,
+                          padx=20, pady=8, cursor="hand2",
+                          activebackground=BLUE, activeforeground="#000000",
+                          command=lambda v=value: self._set_vpn_mode(v))
+            b.pack(side="left", padx=(0, 6))
+            W[wkey] = b
+
+        make_pill("pill_master", "MasterDNS", "MasterDNS", "masterdns")
+        make_pill("pill_vaydns", "VayDNS",    "VayDNS",    "vaydns")
+
+        # ── MasterDNS key field (shown when masterdns selected) ──
+        self._md_key_frame = tk.Frame(c1, bg=CARD)
         self._key_var = entry_field(
-            c1, "key_lbl", "key_ent", "key_hint",
+            self._md_key_frame, "key_lbl", "key_ent", "key_hint",
             "MasterDNS Encryption Key",  "کلید رمزنگاری MasterDNS",
             "32-char key from server  (encrypt_key.txt)",
             "کلید ۳۲ کاراکتری از سرور  (فایل encrypt_key.txt)")
+        self._md_key_frame.pack(fill="x")   # shown by default
 
-        # VayDNS public key — 64 hex chars (Noise protocol)
+        # ── VayDNS key field (shown when vaydns selected) ────────
+        self._vd_key_frame = tk.Frame(c1, bg=CARD)
         self._vd_pubkey_var = entry_field(
-            c1, "vd_key_lbl", "vd_key_ent", "vd_key_hint",
+            self._vd_key_frame, "vd_key_lbl", "vd_key_ent", "vd_key_hint",
             "VayDNS Public Key",  "کلید عمومی VayDNS",
             "64-char hex pubkey from server  (server.pub)",
             "کلید عمومی ۶۴ کاراکتری hex از سرور  (server.pub)")
+        self._vd_key_frame.pack_forget()    # hidden by default
 
         self._country_var = entry_field(
             c1, "country_lbl", "country_ent", "country_hint",
@@ -5468,11 +5542,38 @@ class App(tk.Tk):
             b.pack(fill="x", padx=2)
             W[wkey] = b
 
-        mk_btn("btn_scan",    "▶  Start Scan",           "▶  شروع اسکن",           ACCENT,    SCAN_FG, self._start_scan)
-        mk_btn("btn_stop",    "■  Stop",                  "■  توقف",                DANGER,    "#000000", self._stop_scan,    "disabled")
-        mk_btn("btn_save",    "💾  Save to MasterDNS Profiles", "💾  ذخیره در MasterDNS", BLUE,   SAVE_FG, self._save_configs,       "disabled")
-        mk_btn("btn_vd_save", "💾  Save to VayDNS Profiles",    "💾  ذخیره در VayDNS",    PURPLE, BTN_TEXT, self._save_vaydns_profile, "disabled")
-        mk_btn("btn_clear",   "🗑  Clear",                 "🗑  پاک کردن",            BORDER,    CLEAR_FG,self._clear)
+        mk_btn("btn_scan",    "▶  Start Scan",  "▶  شروع اسکن", ACCENT, SCAN_FG, self._start_scan)
+        mk_btn("btn_stop",    "■  Stop",         "■  توقف",       DANGER, "#000000", self._stop_scan, "disabled")
+
+        # Save button frame — only the active VPN mode's button is visible
+        self._save_btn_frame = tk.Frame(bf, bg=BG)
+        self._save_btn_frame.pack(fill="x", pady=(0, 5))
+
+        def mk_save_btn(wkey, en, pfa, bg_c, fg_c, cmd):
+            b = tk.Button(self._save_btn_frame,
+                          text=pfa if fa else en,
+                          bg=DIS_BG, fg=DIS_FG,
+                          font=FA(12, "bold") if fa else F(12, "bold"),
+                          relief="flat", bd=0,
+                          padx=18, pady=11,
+                          cursor="arrow",
+                          state="disabled",
+                          activebackground=bg_c,
+                          activeforeground=fg_c,
+                          disabledforeground=DIS_FG,
+                          command=cmd)
+            b.pack(fill="x", padx=2)
+            W[wkey] = b
+
+        mk_save_btn("btn_save",    "💾  Save to MasterDNS Profiles", "💾  ذخیره در MasterDNS",
+                    BLUE,   SAVE_FG, self._save_configs)
+        mk_save_btn("btn_vd_save", "💾  Save to VayDNS Profiles",    "💾  ذخیره در VayDNS",
+                    PURPLE, BTN_TEXT, self._save_vaydns_profile)
+
+        # Show only the MasterDNS save button initially
+        W["btn_vd_save"].pack_forget()
+
+        mk_btn("btn_clear",   "🗑  Clear",  "🗑  پاک کردن", BORDER, CLEAR_FG, self._clear)
 
     # ── RIGHT PANEL ─────────────────────────────────────────────
     def _build_right(self, parent):
@@ -5622,6 +5723,8 @@ class App(tk.Tk):
             ("btn_save",    "💾  ذخیره در MasterDNS", "💾  Save to MasterDNS Profiles"),
             ("btn_vd_save", "💾  ذخیره در VayDNS",    "💾  Save to VayDNS Profiles"),
             ("vd_key_lbl",  "کلید عمومی VayDNS",      "VayDNS Public Key"),
+            ("pill_master", "MasterDNS",               "MasterDNS"),
+            ("pill_vaydns", "VayDNS",                  "VayDNS"),
             ("btn_clear",   "🗑  پاک کردن",            "🗑  Clear"),
         ]:
             W[wkey].config(text=fa_t if fa else en_t,
@@ -5664,6 +5767,8 @@ class App(tk.Tk):
         country = self._country_var.get().strip()
         fa      = self._lang == "fa"
 
+        mode = self._vpn_mode.get()
+
         if not domain:
             messagebox.showwarning(
                 "", "دامنه را وارد کنید." if fa else "Please enter the domain.")
@@ -5672,8 +5777,21 @@ class App(tk.Tk):
             messagebox.showwarning(
                 "", "نام پوشه را وارد کنید." if fa else "Please enter the folder name.")
             return
-        # Note: key fields (MasterDNS key, VayDNS pubkey) are NOT required for scanning.
-        # They are validated when saving each respective profile.
+
+        # Validate the key for the selected VPN mode
+        if mode == "masterdns":
+            if not key:
+                messagebox.showwarning(
+                    "", "کلید رمزنگاری MasterDNS را وارد کنید." if fa
+                        else "Please enter the MasterDNS Encryption Key.")
+                return
+        else:  # vaydns
+            pubkey = (self._vd_pubkey_var.get() if self._vd_pubkey_var else "").strip()
+            if not pubkey:
+                messagebox.showwarning(
+                    "", "کلید عمومی VayDNS را وارد کنید." if fa
+                        else "Please enter the VayDNS Public Key.")
+                return
 
         # Reset UI
         self._found_ips.clear()
@@ -5840,8 +5958,11 @@ class App(tk.Tk):
             # No results or stopped — just enable save if anything found
             self._W["btn_scan"].config(state="normal",  bg=ACCENT,  fg="#000000", disabledforeground=DIS_FG)
             if found:
-                self._W["btn_save"].config(state="normal",  bg=BLUE,   fg="#000000", disabledforeground=DIS_FG)
-                self._W["btn_vd_save"].config(state="normal", bg=PURPLE, fg=BTN_TEXT, disabledforeground=DIS_FG)
+                mode = self._vpn_mode.get()
+                if mode == "masterdns":
+                    self._W["btn_save"].config(state="normal", bg=BLUE, fg="#000000", disabledforeground=DIS_FG)
+                else:
+                    self._W["btn_vd_save"].config(state="normal", bg=PURPLE, fg=BTN_TEXT, disabledforeground=DIS_FG)
             self._W["status_lbl"].config(
                 text=f"● {'اتمام' if fa else 'Done'}  —  {found} {'یافت‌شده' if fa else 'found'}",
                 fg=GREEN)
