@@ -14,6 +14,7 @@ ICON_B64 = (
 )
 
 # Windows asyncio fix — MUST be before any asyncio usage
+
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -3370,9 +3371,53 @@ def run_e2e_verify(found_ips: list, domain: str, timeout_s: float,
         except Exception:
             pass
 
-# ═══════════════════════════════════════════════════════════════
 #  DESIGN TOKENS
 # ═══════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════
+#  WINDOWS BIDI FIX — Persian/Arabic text rendering
+# ═══════════════════════════════════════════════════════════════
+# On Windows, Tkinter's GDI renderer does not auto-reorder RTL text
+# for LTR-locale systems. Persian words appear fully reversed (e.g.
+# "اسکنر" shows as "رنکسا"). Fix: prepend U+200F (RIGHT-TO-LEFT MARK)
+# to any string containing Persian/Arabic characters before it reaches
+# a Tkinter widget. Monkey-patching Label/Button/etc. catches every
+# string automatically. macOS and Linux have native BiDi — no effect there.
+if sys.platform == "win32":
+    _RLM = "\u200f"   # RIGHT-TO-LEFT MARK
+
+    def _bidi(s):
+        """Prepend RLM to Persian/Arabic strings for correct Windows rendering."""
+        if isinstance(s, str) and not s.startswith(_RLM):
+            if any("\u0600" <= c <= "\u06ff" for c in s):
+                return _RLM + s
+        return s
+
+    def _patch_widget(cls):
+        _oi = cls.__init__
+        _oc = cls.configure
+
+        def _ni(self, master=None, cnf={}, **kw):
+            if "text" in kw: kw["text"] = _bidi(kw["text"])
+            _oi(self, master, cnf, **kw)
+
+        def _nc(self, cnf=None, **kw):
+            if "text" in kw: kw["text"] = _bidi(kw["text"])
+            return _oc(self, cnf, **kw)
+
+        cls.__init__  = _ni
+        cls.configure = _nc
+        cls.config    = _nc
+
+    for _c in (tk.Label, tk.Button, tk.Checkbutton, tk.Radiobutton):
+        _patch_widget(_c)
+
+    _oc_ttk = ttk.Label.configure
+    def _nc_ttk(self, **kw):
+        if "text" in kw: kw["text"] = _bidi(kw["text"])
+        return _oc_ttk(self, **kw)
+    ttk.Label.configure = ttk.Label.config = _nc_ttk
+
 # ═══════════════════════════════════════════════════════════════
 #  DESIGN TOKENS — warm, modern, user-friendly palette
 # ═══════════════════════════════════════════════════════════════
