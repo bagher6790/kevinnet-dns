@@ -3528,6 +3528,14 @@ HELP = {
          "۴. نسخه بهتر را نگه دارید، بقیه را حذف کنید\n\n"
          "برای MasterDNS می‌توانید اسکن را تکرار کنید — هر بار Resolverهای جدید"),
 
+        ("📁  پوشه‌های برنامه — مهم",
+         "KevinNet همه پروفایل‌ها را در پوشه‌های خودش کنار برنامه ذخیره می‌کند:\n"
+         "• masterdns_profiles/ — پروفایل‌های MasterDNS\n"
+         "• vaydns_profiles/    — پروفایل‌های VayDNS\n"
+         "• Iran/ یا Turkey/    — فایل‌های اجرایی VPN\n\n"
+         "لطفاً این پوشه‌ها را دستی جابجا یا حذف نکنید.\n"
+         "برای دسترسی به همه پروفایل‌ها فقط برنامه را باز کنید —\n"
+         "همه چیز در تب MasterDNS یا VayDNS Profiles قابل مشاهده است."),
         ("مک — مشکل 'damaged' یا 'cannot be verified'",
          "در ترمینال این دو دستور را بزنید:\n"
          "chmod +x KevinNet_macOS_Universal\n"
@@ -3631,6 +3639,14 @@ HELP = {
          "4. Keep the better one, delete the rest\n\n"
          "For MasterDNS, repeat the scan to get fresh resolvers — each run finds different IPs."),
 
+        ("📁  App folders — important",
+         "KevinNet stores all profiles in folders next to the app:\n"
+         "• masterdns_profiles/ — MasterDNS profiles\n"
+         "• vaydns_profiles/    — VayDNS profiles\n"
+         "• Iran/ or Turkey/    — VPN output files\n\n"
+         "Do not move or delete these folders manually.\n"
+         "To access all your profiles, just open the app —\n"
+         "everything is visible in the MasterDNS or VayDNS Profiles tab."),
         ("macOS — 'damaged' or 'cannot be verified' error",
          "Run these two commands in Terminal:\n"
          "chmod +x KevinNet_macOS_Universal\n"
@@ -4501,8 +4517,8 @@ class App(tk.Tk):
             lbl = tk.Label(tab_bar,
                            text=fa_text if self._lang == "fa" else en_text,
                            bg=PANEL, fg=MUTED,
-                           font=F(11, "bold"),
-                           padx=24, pady=11, cursor="hand2")
+                           font=F(13, "bold"),
+                           padx=26, pady=12, cursor="hand2")
             lbl.pack(side="left")
             lbl.bind("<Button-1>", lambda e: cmd())
             W[wkey] = lbl
@@ -4842,10 +4858,10 @@ class App(tk.Tk):
         info = tk.Frame(row, bg=CARD)
         info.pack(side="left", fill="x", expand=True, padx=8, pady=8)
         name_lbl = tk.Label(info, text=name, bg=CARD, fg=TEXT,
-                            font=F(10, "bold"), anchor="w")
+                            font=F(12, "bold"), anchor="w")
         name_lbl.pack(fill="x")
         tk.Label(info, text=f"{date}  ·  {cnt} resolvers",
-                 bg=CARD, fg=MUTED, font=F(8), anchor="w").pack(fill="x")
+                 bg=CARD, fg=MUTED, font=F(10), anchor="w").pack(fill="x")
         tk.Frame(parent, bg=BORDER, height=1).pack(fill="x")
 
         def _on_click(e, s=stem):
@@ -5336,10 +5352,10 @@ class App(tk.Tk):
         info    = tk.Frame(row, bg=CARD)
         info.pack(side="left", fill="x", expand=True, padx=8, pady=8)
         name_lbl = tk.Label(info, text=name, bg=CARD, fg=TEXT,
-                            font=F(10, "bold"), anchor="w")
+                            font=F(12, "bold"), anchor="w")
         name_lbl.pack(fill="x")
         tk.Label(info, text=f"{date}  ·  {cnt} resolvers  ·  {transport}",
-                 bg=CARD, fg=MUTED, font=F(8), anchor="w").pack(fill="x")
+                 bg=CARD, fg=MUTED, font=F(10), anchor="w").pack(fill="x")
         tk.Frame(parent, bg=BORDER, height=1).pack(fill="x")
 
         def _click(e, s=stem):
@@ -5734,7 +5750,7 @@ class App(tk.Tk):
             "MasterDNS Encryption Key",  "کلید رمزنگاری MasterDNS",
             "32-char key from server  (encrypt_key.txt)",
             "کلید ۳۲ کاراکتری از سرور  (فایل encrypt_key.txt)")
-        self._md_key_frame.pack(fill="x")   # shown by default
+        # Key frame packed AFTER country/domain — see _set_vpn_mode
 
         # ── VayDNS key field (shown when vaydns selected) ────────
         self._vd_key_frame = tk.Frame(c1, bg=CARD)
@@ -5757,6 +5773,7 @@ class App(tk.Tk):
             "Tunnel Domain",  "دامنه تانل",
             "subdomain pointing to your server  e.g. v.example.com",
             "ساب‌دامین که به سرور اشاره دارد  مثال: v.example.com")
+        self._md_key_frame.pack(fill="x")  # default: MasterDNS selected
 
         tk.Frame(c1, bg=CARD, height=10).pack()
 
