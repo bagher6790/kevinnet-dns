@@ -3905,15 +3905,53 @@ def write_vaydns_launch_script(profile: dict) -> Path:
 
 
 def get_vaydns_exe() -> Path | None:
-    """Find the vaydns-client binary next to the app or in _MEIPASS."""
-    fname = "vaydns-client.exe" if sys.platform == "win32" else "vaydns-client"
-    local = app_dir() / fname
-    if local.exists():
-        return local
+    """
+    Find the vaydns-client binary next to the app or in _MEIPASS.
+
+    Expected file names (place any one of these next to the KevinNet app):
+
+        Windows x64   : vaydns-client_windows_amd64.exe
+        Windows ARM64 : vaydns-client_windows_arm64.exe
+        macOS Intel   : vaydns-client_darwin_amd64
+        macOS ARM64   : vaydns-client_darwin_arm64
+        Linux x64     : vaydns-client_linux_amd64
+        Linux ARM64   : vaydns-client_linux_arm64
+
+    Generic fallbacks (also accepted):
+        Windows       : vaydns-client.exe
+        macOS / Linux : vaydns-client
+    """
+    import platform as _platform
+
+    machine = _platform.machine().lower()
+    is_arm  = machine in ("arm64", "aarch64", "armv8l")
+    arch    = "arm64" if is_arm else "amd64"
+
+    if sys.platform == "win32":
+        candidates = [
+            f"vaydns-client_windows_{arch}.exe",
+            "vaydns-client.exe",
+        ]
+    elif sys.platform == "darwin":
+        candidates = [
+            f"vaydns-client_darwin_{arch}",
+            "vaydns-client",
+        ]
+    else:  # Linux + anything else
+        candidates = [
+            f"vaydns-client_linux_{arch}",
+            "vaydns-client",
+        ]
+
+    search_dirs = [app_dir()]
     if getattr(sys, "frozen", False):
-        bundled = Path(getattr(sys, "_MEIPASS", "")) / fname
-        if bundled.exists():
-            return bundled
+        search_dirs.append(Path(getattr(sys, "_MEIPASS", "")))
+
+    for d in search_dirs:
+        for fname in candidates:
+            p = d / fname
+            if p.exists():
+                return p
     return None
 
 # ═══════════════════════════════════════════════════════════════
