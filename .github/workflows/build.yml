@@ -19,13 +19,28 @@ jobs:
           architecture: "x64"
       - name: Install packages
         run: python -m pip install dnspython pyinstaller pillow --upgrade --quiet
+      - name: Download vaydns-client (Windows amd64)
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod "https://api.github.com/repos/net2share/vaydns/releases/latest"
+          $asset = $release.assets | Where-Object { $_.name -match "windows" -and $_.name -match "amd64" } | Select-Object -First 1
+          if (-not $asset) { $asset = $release.assets | Where-Object { $_.name -match "windows" } | Select-Object -First 1 }
+          if ($asset) {
+            Write-Host "Downloading $($asset.name)"
+            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $asset.name
+            Write-Host "OK: $($asset.name)"
+          } else { Write-Host "vaydns windows binary not found in latest release" }
       - name: Build EXE
+        shell: pwsh
         run: |
           $addData = ""
           if (Test-Path "MasterDnsVPN.exe") { $addData += ' --add-data "MasterDnsVPN.exe;."' }
           if (Test-Path "MasterDnsVPN")     { $addData += ' --add-data "MasterDnsVPN;."' }
-          $cmd = "python -m PyInstaller --onefile --windowed --name KevinNet_Windows_x64 --clean$addData kevinnet.py"
-          Invoke-Expression $cmd
+          Get-ChildItem -Filter "vaydns-client*" | ForEach-Object {
+            $addData += " --add-data `"$($_.Name);.`""
+            Write-Host "Bundling: $($_.Name)"
+          }
+          Invoke-Expression "python -m PyInstaller --onefile --windowed --name KevinNet_Windows_x64 --clean$addData kevinnet.py"
       - uses: actions/upload-artifact@v4
         with:
           name: Windows-x64
@@ -41,13 +56,24 @@ jobs:
           python-version: "3.12"
       - name: Install packages
         run: python -m pip install dnspython pyinstaller pillow --upgrade --quiet
+      - name: Download vaydns-client (Windows arm64)
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod "https://api.github.com/repos/net2share/vaydns/releases/latest"
+          $asset = $release.assets | Where-Object { $_.name -match "windows" -and $_.name -match "arm64" } | Select-Object -First 1
+          if (-not $asset) { $asset = $release.assets | Where-Object { $_.name -match "windows" } | Select-Object -First 1 }
+          if ($asset) {
+            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $asset.name
+            Write-Host "Downloaded: $($asset.name)"
+          } else { Write-Host "vaydns windows/arm64 not found" }
       - name: Build EXE
+        shell: pwsh
         run: |
           $addData = ""
           if (Test-Path "MasterDnsVPN.exe") { $addData += ' --add-data "MasterDnsVPN.exe;."' }
           if (Test-Path "MasterDnsVPN")     { $addData += ' --add-data "MasterDnsVPN;."' }
-          $cmd = "python -m PyInstaller --onefile --windowed --name KevinNet_Windows_ARM64 --clean$addData kevinnet.py"
-          Invoke-Expression $cmd
+          Get-ChildItem -Filter "vaydns-client*" | ForEach-Object { $addData += " --add-data `"$($_.Name);.`"" }
+          Invoke-Expression "python -m PyInstaller --onefile --windowed --name KevinNet_Windows_ARM64 --clean$addData kevinnet.py"
       - uses: actions/upload-artifact@v4
         with:
           name: Windows-ARM64
@@ -63,16 +89,28 @@ jobs:
           brew install python@3.12 python-tk@3.12
           /opt/homebrew/opt/python@3.12/bin/python3.12 -m venv .venv
           .venv/bin/pip install dnspython pyinstaller pillow --upgrade --quiet
+      - name: Download vaydns-client (darwin arm64)
+        run: |
+          ASSET_URL=$(curl -s https://api.github.com/repos/net2share/vaydns/releases/latest | python3 -c "
+          import sys,json
+          assets=json.load(sys.stdin).get('assets',[])
+          url=next((a['browser_download_url'] for a in assets if 'darwin' in a['name'].lower() and 'arm64' in a['name'].lower()),'')
+          if not url: url=next((a['browser_download_url'] for a in assets if 'darwin' in a['name'].lower() or 'mac' in a['name'].lower()),'')
+          print(url)")
+          if [ -n "$ASSET_URL" ]; then
+            FNAME=$(basename "$ASSET_URL")
+            curl -fsSL "$ASSET_URL" -o "$FNAME" && chmod +x "$FNAME"
+            echo "Downloaded: $FNAME"
+          else
+            echo "vaydns darwin/arm64 not found in latest release"
+          fi
       - name: Build arm64
         run: |
           ADD_DATA=""
-          [ -f "MasterDnsVPN"     ] && ADD_DATA="$ADD_DATA --add-data MasterDnsVPN:."
-          [ -f "MasterDnsVPN.exe" ] && ADD_DATA="$ADD_DATA --add-data MasterDnsVPN.exe:."
-          .venv/bin/python -m PyInstaller \
-            --onefile --name KevinNet_arm64 --clean \
-            $ADD_DATA kevinnet.py
-          [ ! -f dist/KevinNet_arm64 ] && \
-            cp dist/KevinNet_arm64.app/Contents/MacOS/KevinNet_arm64 dist/KevinNet_arm64 || true
+          [ -f "MasterDnsVPN" ] && ADD_DATA="$ADD_DATA --add-data MasterDnsVPN:."
+          for f in vaydns-client*; do [ -f "$f" ] && ADD_DATA="$ADD_DATA --add-data $f:." && echo "Bundling: $f"; done
+          .venv/bin/python -m PyInstaller --onefile --name KevinNet_arm64 --clean $ADD_DATA kevinnet.py
+          [ ! -f dist/KevinNet_arm64 ] && cp dist/KevinNet_arm64.app/Contents/MacOS/KevinNet_arm64 dist/KevinNet_arm64 || true
           lipo -archs dist/KevinNet_arm64
           cp dist/KevinNet_arm64 dist/KevinNet_macOS_arm64
       - uses: actions/upload-artifact@v4
@@ -81,7 +119,6 @@ jobs:
           path: dist/KevinNet_macOS_arm64
 
   # ── macOS Intel (x86_64) ─────────────────────────────────────
-  # Uses official Python installer from python.org — no Homebrew needed
   macos-intel:
     runs-on: macos-latest
     steps:
@@ -90,26 +127,35 @@ jobs:
         run: softwareupdate --install-rosetta --agree-to-license 2>/dev/null || true
       - name: Install official Python 3.12 universal from python.org
         run: |
-          curl -fsSL https://www.python.org/ftp/python/3.12.9/python-3.12.9-macos11.pkg \
-            -o /tmp/py.pkg
+          curl -fsSL https://www.python.org/ftp/python/3.12.9/python-3.12.9-macos11.pkg -o /tmp/py.pkg
           sudo installer -pkg /tmp/py.pkg -target /
-          # The installer puts python3.12 at /usr/local/bin/python3.12
-          # Verify it can run as x86_64 via Rosetta
           arch -x86_64 /usr/local/bin/python3.12 -c "import platform; print(platform.machine())"
       - name: Create x86_64 venv and install packages
         run: |
           arch -x86_64 /usr/local/bin/python3.12 -m venv .venv_x86
           arch -x86_64 .venv_x86/bin/pip install dnspython pyinstaller pillow --upgrade --quiet
+      - name: Download vaydns-client (darwin amd64)
+        run: |
+          ASSET_URL=$(curl -s https://api.github.com/repos/net2share/vaydns/releases/latest | python3 -c "
+          import sys,json
+          assets=json.load(sys.stdin).get('assets',[])
+          url=next((a['browser_download_url'] for a in assets if 'darwin' in a['name'].lower() and 'amd64' in a['name'].lower()),'')
+          if not url: url=next((a['browser_download_url'] for a in assets if 'darwin' in a['name'].lower() or 'mac' in a['name'].lower()),'')
+          print(url)")
+          if [ -n "$ASSET_URL" ]; then
+            FNAME=$(basename "$ASSET_URL")
+            curl -fsSL "$ASSET_URL" -o "$FNAME" && chmod +x "$FNAME"
+            echo "Downloaded: $FNAME"
+          else
+            echo "vaydns darwin/amd64 not found"
+          fi
       - name: Build x86_64 binary
         run: |
           ADD_DATA=""
-          [ -f "MasterDnsVPN"     ] && ADD_DATA="$ADD_DATA --add-data MasterDnsVPN:."
-          [ -f "MasterDnsVPN.exe" ] && ADD_DATA="$ADD_DATA --add-data MasterDnsVPN.exe:."
-          arch -x86_64 .venv_x86/bin/python -m PyInstaller \
-            --onefile --name KevinNet_x86_64 --clean \
-            $ADD_DATA kevinnet.py
-          [ ! -f dist/KevinNet_x86_64 ] && \
-            cp dist/KevinNet_x86_64.app/Contents/MacOS/KevinNet_x86_64 dist/KevinNet_x86_64 || true
+          [ -f "MasterDnsVPN" ] && ADD_DATA="$ADD_DATA --add-data MasterDnsVPN:."
+          for f in vaydns-client*; do [ -f "$f" ] && ADD_DATA="$ADD_DATA --add-data $f:." && echo "Bundling: $f"; done
+          arch -x86_64 .venv_x86/bin/python -m PyInstaller --onefile --name KevinNet_x86_64 --clean $ADD_DATA kevinnet.py
+          [ ! -f dist/KevinNet_x86_64 ] && cp dist/KevinNet_x86_64.app/Contents/MacOS/KevinNet_x86_64 dist/KevinNet_x86_64 || true
           lipo -archs dist/KevinNet_x86_64
           cp dist/KevinNet_x86_64 dist/KevinNet_macOS_Intel
       - uses: actions/upload-artifact@v4
@@ -135,15 +181,10 @@ jobs:
       - name: Combine into Universal Binary
         run: |
           chmod +x bins/KevinNet_macOS_arm64 bins/KevinNet_macOS_Intel
-          echo "arm64 arch:" && lipo -archs bins/KevinNet_macOS_arm64
-          echo "Intel arch:" && lipo -archs bins/KevinNet_macOS_Intel
-          lipo -create bins/KevinNet_macOS_arm64 bins/KevinNet_macOS_Intel \
-            -output bins/KevinNet_macOS_Universal
+          lipo -create bins/KevinNet_macOS_arm64 bins/KevinNet_macOS_Intel -output bins/KevinNet_macOS_Universal
           ARCHS=$(lipo -archs bins/KevinNet_macOS_Universal)
           echo "Universal archs: $ARCHS"
-          if [[ "$ARCHS" != *"arm64"* ]] || [[ "$ARCHS" != *"x86_64"* ]]; then
-            echo "ERROR: missing slice — got: $ARCHS" && exit 1
-          fi
+          [[ "$ARCHS" != *"arm64"* ]] || [[ "$ARCHS" != *"x86_64"* ]] && echo "ERROR: $ARCHS" && exit 1
           echo "SUCCESS"
       - uses: actions/upload-artifact@v4
         with:
@@ -162,15 +203,26 @@ jobs:
         run: sudo apt-get install -y python3-tk
       - name: Install packages
         run: python -m pip install dnspython pyinstaller pillow --upgrade --quiet
+      - name: Download vaydns-client (linux amd64)
+        run: |
+          ASSET_URL=$(curl -s https://api.github.com/repos/net2share/vaydns/releases/latest | python3 -c "
+          import sys,json
+          assets=json.load(sys.stdin).get('assets',[])
+          url=next((a['browser_download_url'] for a in assets if 'linux' in a['name'].lower() and 'amd64' in a['name'].lower()),'')
+          print(url)")
+          if [ -n "$ASSET_URL" ]; then
+            FNAME=$(basename "$ASSET_URL")
+            curl -fsSL "$ASSET_URL" -o "$FNAME" && chmod +x "$FNAME"
+            echo "Downloaded: $FNAME"
+          else
+            echo "vaydns linux/amd64 not found"
+          fi
       - name: Build binary
         run: |
           ADD_DATA=""
-          [ -f "MasterDnsVPN"     ] && ADD_DATA="$ADD_DATA --add-data MasterDnsVPN:."
-          [ -f "MasterDnsVPN.exe" ] && ADD_DATA="$ADD_DATA --add-data MasterDnsVPN.exe:."
-          python -m PyInstaller \
-            --onefile --windowed \
-            --name KevinNet_Linux_x64 \
-            --clean $ADD_DATA kevinnet.py
+          [ -f "MasterDnsVPN" ] && ADD_DATA="$ADD_DATA --add-data MasterDnsVPN:."
+          for f in vaydns-client*; do [ -f "$f" ] && ADD_DATA="$ADD_DATA --add-data $f:." && echo "Bundling: $f"; done
+          python -m PyInstaller --onefile --windowed --name KevinNet_Linux_x64 --clean $ADD_DATA kevinnet.py
       - uses: actions/upload-artifact@v4
         with:
           name: Linux-x64
@@ -188,15 +240,26 @@ jobs:
         run: sudo apt-get install -y python3-tk
       - name: Install packages
         run: python -m pip install dnspython pyinstaller pillow --upgrade --quiet
+      - name: Download vaydns-client (linux arm64)
+        run: |
+          ASSET_URL=$(curl -s https://api.github.com/repos/net2share/vaydns/releases/latest | python3 -c "
+          import sys,json
+          assets=json.load(sys.stdin).get('assets',[])
+          url=next((a['browser_download_url'] for a in assets if 'linux' in a['name'].lower() and 'arm64' in a['name'].lower()),'')
+          print(url)")
+          if [ -n "$ASSET_URL" ]; then
+            FNAME=$(basename "$ASSET_URL")
+            curl -fsSL "$ASSET_URL" -o "$FNAME" && chmod +x "$FNAME"
+            echo "Downloaded: $FNAME"
+          else
+            echo "vaydns linux/arm64 not found"
+          fi
       - name: Build binary
         run: |
           ADD_DATA=""
-          [ -f "MasterDnsVPN"     ] && ADD_DATA="$ADD_DATA --add-data MasterDnsVPN:."
-          [ -f "MasterDnsVPN.exe" ] && ADD_DATA="$ADD_DATA --add-data MasterDnsVPN.exe:."
-          python -m PyInstaller \
-            --onefile --windowed \
-            --name KevinNet_Linux_ARM64 \
-            --clean $ADD_DATA kevinnet.py
+          [ -f "MasterDnsVPN" ] && ADD_DATA="$ADD_DATA --add-data MasterDnsVPN:."
+          for f in vaydns-client*; do [ -f "$f" ] && ADD_DATA="$ADD_DATA --add-data $f:." && echo "Bundling: $f"; done
+          python -m PyInstaller --onefile --windowed --name KevinNet_Linux_ARM64 --clean $ADD_DATA kevinnet.py
       - uses: actions/upload-artifact@v4
         with:
           name: Linux-ARM64
@@ -211,14 +274,12 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: release_files/
       - name: List files
         run: find release_files/ -type f | sort
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -227,31 +288,28 @@ jobs:
           body: |
             ## KevinNet DNS ${{ github.ref_name }}
 
-            Companion tool for [MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN)
+            User-friendly DNS tunnel client — supports MasterDnsVPN and VayDNS
             by [Kevin Haji](https://kevinhaji.com)
-
-            ### What's new in this release
-            See [README.md](README.md) for full documentation including the MasterDNS Profiles tab and Iran-optimised settings guide.
 
             ### Download for your platform:
 
-            | Platform | File | Notes |
-            |---|---|---|
-            | 🪟 Windows x64 | `KevinNet_Windows_x64.exe` | Most Windows PCs |
-            | 🪟 Windows ARM64 | `KevinNet_Windows_ARM64.exe` | Surface, Snapdragon |
-            | 🍎 macOS Universal | `KevinNet_macOS_Universal` | ✅ Try this first |
-            | 🍎 macOS Apple Silicon | `KevinNet_macOS_arm64` | M1/M2/M3/M4 fallback |
-            | 🍎 macOS Intel | `KevinNet_macOS_Intel` | Intel Mac fallback |
-            | 🐧 Linux x64 | `KevinNet_Linux_x64` | |
-            | 🐧 Linux ARM64 | `KevinNet_Linux_ARM64` | |
+            | Platform | File |
+            |---|---|
+            | 🪟 Windows x64 | `KevinNet_Windows_x64.exe` |
+            | 🪟 Windows ARM64 | `KevinNet_Windows_ARM64.exe` |
+            | 🍎 macOS Universal | `KevinNet_macOS_Universal` ✅ try this first |
+            | 🍎 macOS Apple Silicon | `KevinNet_macOS_arm64` fallback |
+            | 🍎 macOS Intel | `KevinNet_macOS_Intel` fallback |
+            | 🐧 Linux x64 | `KevinNet_Linux_x64` |
+            | 🐧 Linux ARM64 | `KevinNet_Linux_ARM64` |
 
-            **macOS — run these after downloading:**
+            **macOS — run after downloading:**
             ```bash
             chmod +x KevinNet_macOS_*
             xattr -d com.apple.quarantine KevinNet_macOS_*
             ```
 
-            See [README.md](README.md) for full instructions.
+            See [README.md](README.md) for full setup and usage instructions.
           files: |
             release_files/Windows-x64/KevinNet_Windows_x64.exe
             release_files/Windows-ARM64/KevinNet_Windows_ARM64.exe
