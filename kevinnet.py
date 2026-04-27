@@ -3720,13 +3720,51 @@ def write_profile_files(profile: dict):
 # ═══════════════════════════════════════════════════════════════
 
 VAYDNS_DEFAULTS: dict = {
-    "transport":     "udp",
-    "listen_port":   7000,
-    "max_qname_len": 101,
-    "idle_timeout":  "10s",
-    "keepalive":     "2s",
-    "log_level":     "info",
-    "record_type":   "txt",
+    # Transport
+    "transport":        "udp",
+    "custom_resolver":  "",        # UDP IP, DoH URL, or DoT host:port
+
+    # Local listener
+    "listen_port":      7000,
+
+    # QNAME / upstream MTU
+    "max_qname_len":    101,       # 101 = ~50 byte MTU with short domains; use 253 for dnstt-compat
+    "max_num_labels":   0,         # 0 = unlimited; set to 1 for most DNS-like behaviour
+
+    # Session / reconnect
+    "idle_timeout":     "10s",     # must match server; dnstt-compat default is 2m
+    "keepalive":        "2s",      # must be < idle_timeout; dnstt-compat default is 10s
+    "reconnect_min":    "1s",
+    "reconnect_max":    "30s",
+    "max_streams":      0,         # 0 = unlimited
+
+    # DNS record type (must match server)
+    "record_type":      "txt",     # txt is most compatible; try null for slightly higher throughput
+
+    # Queue / KCP
+    "queue_size":       512,
+    "kcp_window_size":  0,         # 0 = queue_size/2
+
+    # UDP-specific
+    "udp_workers":      100,
+    "udp_shared_socket": False,
+
+    # Rate limiting
+    "rps":              0,         # 0 = unlimited queries/sec
+
+    # Other
+    "log_level":        "info",
+}
+
+# Iran-recommended VayDNS defaults (shown as hints in the UI)
+VAYDNS_IRAN_HINTS: dict = {
+    "max_qname_len":    "101  (default — safe for most resolvers)",
+    "idle_timeout":     "10s  (increase to 30s if you see frequent reconnects)",
+    "keepalive":        "2s   (keep well below idle_timeout)",
+    "record_type":      "txt  (most compatible under DPI)",
+    "queue_size":       "512  (increase to 1024 on fast connections)",
+    "udp_workers":      "100  (lower to 50 if you see socket errors)",
+    "rps":              "0    (set to 50 if your resolver rate-limits you)",
 }
 
 VAYDNS_TRANSPORT_LABELS = [
@@ -3794,14 +3832,28 @@ def delete_vaydns_profile(stem: str) -> str | None:
     return country
 
 
-def build_vaydns_command(profile: dict, resolver: str) -> str:
-    """Return the full vaydns-client shell command for a single resolver."""
+def build_vaydns_command(profile: dict, resolver: str,
+                          bin_name: str | None = None) -> str:
+    """Return the full vaydns-client shell command for a single resolver.
+
+    bin_name defaults to the arch-specific name found by get_vaydns_exe(),
+    falling back to the generic name. Pass it explicitly when you already
+    know the copied filename.
+    """
     opts      = {**VAYDNS_DEFAULTS, **profile.get("options", {})}
     domain    = profile.get("domain", "")
     pubkey    = profile.get("pubkey", "")
     transport = opts["transport"]
     listen    = f"127.0.0.1:{opts['listen_port']}"
-    bin_name  = "vaydns-client.exe" if sys.platform == "win32" else "./vaydns-client"
+
+    if bin_name is None:
+        src = get_vaydns_exe()
+        if src:
+            bin_name = f"./{src.name}"
+        elif sys.platform == "win32":
+            bin_name = "vaydns-client.exe"
+        else:
+            bin_name = "./vaydns-client"
 
     if transport == "udp":
         transport_flag = f"-udp {resolver}"
@@ -3810,19 +3862,34 @@ def build_vaydns_command(profile: dict, resolver: str) -> str:
     else:  # dot
         transport_flag = f"-dot {resolver}"
 
-    cmd = (
-        f"{bin_name} "
-        f"{transport_flag} "
-        f"-pubkey {pubkey} "
-        f"-domain {domain} "
-        f"-listen {listen} "
-        f"-max-qname-len {opts['max_qname_len']} "
-        f"-idle-timeout {opts['idle_timeout']} "
-        f"-keepalive {opts['keepalive']} "
-        f"-record-type {opts['record_type']} "
-        f"-log-level {opts['log_level']}"
-    )
-    return cmd
+    parts = [
+        bin_name,
+        transport_flag,
+        f"-pubkey {pubkey}",
+        f"-domain {domain}",
+        f"-listen {listen}",
+        f"-max-qname-len {opts['max_qname_len']}",
+        f"-idle-timeout {opts['idle_timeout']}",
+        f"-keepalive {opts['keepalive']}",
+        f"-reconnect-min {opts['reconnect_min']}",
+        f"-reconnect-max {opts['reconnect_max']}",
+        f"-record-type {opts['record_type']}",
+        f"-queue-size {opts['queue_size']}",
+        f"-log-level {opts['log_level']}",
+    ]
+    if opts.get("max_num_labels", 0):
+        parts.append(f"-max-num-labels {opts['max_num_labels']}")
+    if opts.get("max_streams", 0):
+        parts.append(f"-max-streams {opts['max_streams']}")
+    if opts.get("kcp_window_size", 0):
+        parts.append(f"-kcp-window-size {opts['kcp_window_size']}")
+    if opts.get("rps", 0):
+        parts.append(f"-rps {opts['rps']}")
+    if transport == "udp":
+        parts.append(f"-udp-workers {opts.get('udp_workers', 100)}")
+        if opts.get("udp_shared_socket", False):
+            parts.append("-udp-shared-socket")
+    return " ".join(parts)
 
 
 def write_vaydns_launch_script(profile: dict) -> Path:
@@ -3833,53 +3900,92 @@ def write_vaydns_launch_script(profile: dict) -> Path:
     resolvers = profile.get("resolvers", [])
     transport = opts["transport"]
     folder    = app_dir() / country
-    folder.mkdir(parents=True, exist_ok=True)
+    # NOTE: folder.mkdir is called BELOW, only right before we write files.
+    # This prevents empty folders appearing if the function is called speculatively.
 
     # Build resolver address list
-    # For UDP: append :53 to raw IPs from the scan
-    # For DoH/DoT: profile stores a single custom address
+    # For UDP transport: use scanned resolvers (all of them, not just 20).
+    # Fall back to 8.8.8.8 only if the profile has zero resolvers AND no custom_resolver.
+    custom_resolver = opts.get("custom_resolver", "").strip()
     if transport == "udp":
-        resolver_addrs = [
-            r if ":" in r else f"{r}:53"
-            for r in resolvers[:20]   # cap at 20 for the script
-        ] or ["8.8.8.8:53"]
+        if custom_resolver:
+            # User specified a single resolver — use only that
+            resolver_addrs = [
+                custom_resolver if ":" in custom_resolver else f"{custom_resolver}:53"
+            ]
+        else:
+            # Use all scanned resolvers so script can fall through if one fails
+            resolver_addrs = [
+                r if ":" in r else f"{r}:53"
+                for r in resolvers
+            ] or ["8.8.8.8:53"]
     else:
-        # For DoH/DoT a custom resolver URL/addr is stored in options
-        custom = opts.get("custom_resolver", "")
-        resolver_addrs = [custom] if custom else [""]
+        # DoH / DoT: user must provide resolver URL or address in options
+        resolver_addrs = [custom_resolver] if custom_resolver else [""]
 
-    # Copy vaydns-client binary if present
-    bin_src  = get_vaydns_exe()
-    bin_name = "vaydns-client.exe" if sys.platform == "win32" else "vaydns-client"
+    # Now create folder and copy binary
+    folder.mkdir(parents=True, exist_ok=True)
+
+    # Copy vaydns-client binary if present — keep arch-specific name
+    bin_src = get_vaydns_exe()
     if bin_src:
         try:
-            _sh.copy2(str(bin_src), str(folder / bin_src.name))
+            dst = folder / bin_src.name
+            _sh.copy2(str(bin_src), str(dst))
             if sys.platform != "win32":
-                (folder / bin_src.name).chmod(
-                    (folder / bin_src.name).stat().st_mode | 0o111)
+                dst.chmod(dst.stat().st_mode | 0o111)
         except Exception:
             pass
 
+    # Determine the actual binary name that was copied into the folder
+    if bin_src:
+        sh_bin_name  = f"./{bin_src.name}"
+        bat_bin_name = bin_src.name  # no ./ on Windows
+    elif sys.platform == "win32":
+        sh_bin_name  = "vaydns-client.exe"
+        bat_bin_name = "vaydns-client.exe"
+    else:
+        sh_bin_name  = "./vaydns-client"
+        bat_bin_name = "vaydns-client"
+
     # --- Shell script (macOS / Linux) ---
     if sys.platform != "win32":
-        lines = ["#!/bin/bash", "set -e", "",
-                 "# Auto-generated by KevinNet DNS — VayDNS launcher",
-                 f"# Profile: {profile.get('name','')}",
-                 f"# Domain:  {profile.get('domain','')}",
-                 ""]
+        lines = [
+            "#!/bin/bash",
+            "# Auto-generated by KevinNet DNS — VayDNS launcher",
+            f"# Profile: {profile.get('name','')}",
+            f"# Domain:  {profile.get('domain','')}",
+            f"# Transport: {transport}",
+            "",
+        ]
         if transport == "udp":
-            lines += [
-                "RESOLVERS=(", *[f'  "{r}"' for r in resolver_addrs], ")", "",
-                'for RESOLVER in "${RESOLVERS[@]}"; do',
-                '  echo "[vaydns] trying resolver: $RESOLVER"',
-                f"  {build_vaydns_command(profile, '"$RESOLVER"')}",
-                '  echo "[vaydns] disconnected from $RESOLVER, trying next..."',
-                "done",
-                'echo "[vaydns] all resolvers exhausted"',
-            ]
+            if len(resolver_addrs) == 1:
+                # Single resolver (user specified one explicitly)
+                lines += [
+                    f"echo '[vaydns] using resolver: {resolver_addrs[0]}'",
+                    build_vaydns_command(profile, resolver_addrs[0], sh_bin_name),
+                ]
+            else:
+                # Multiple scanned resolvers — try each in order
+                lines += [
+                    "RESOLVERS=(",
+                    *[f'  "{r}"' for r in resolver_addrs],
+                    ")", "",
+                    'for RESOLVER in "${RESOLVERS[@]}"; do',
+                    '  echo "[vaydns] trying resolver: $RESOLVER"',
+                    f"  {build_vaydns_command(profile, '"$RESOLVER"', sh_bin_name)} && exit 0",
+                    '  echo "[vaydns] resolver $RESOLVER failed, trying next..."',
+                    "done",
+                    'echo "[vaydns] all resolvers exhausted — check your pubkey and domain"',
+                    "exit 1",
+                ]
         else:
-            addr = resolver_addrs[0]
-            lines += [build_vaydns_command(profile, addr)]
+            # DoH or DoT — single resolver address
+            addr = resolver_addrs[0] if resolver_addrs[0] else ""
+            if not addr:
+                lines += [f'echo "ERROR: set a resolver address in the VayDNS Profiles tab for {transport} transport"']
+            else:
+                lines += [build_vaydns_command(profile, addr, sh_bin_name)]
 
         script_path = folder / "run.sh"
         script_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -3887,17 +3993,25 @@ def write_vaydns_launch_script(profile: dict) -> Path:
         return script_path
 
     # --- Batch script (Windows) ---
-    lines = ["@echo off",
-             "REM Auto-generated by KevinNet DNS — VayDNS launcher",
-             f"REM Profile: {profile.get('name','')}",
-             ""]
+    lines = [
+        "@echo off",
+        "REM Auto-generated by KevinNet DNS — VayDNS launcher",
+        f"REM Profile: {profile.get('name','')}",
+        f"REM Transport: {transport}",
+        "",
+    ]
     if transport == "udp":
         for r in resolver_addrs:
             lines.append(f"echo Trying {r}")
-            lines.append(build_vaydns_command(profile, r).replace("./vaydns-client", "vaydns-client.exe"))
+            lines.append(build_vaydns_command(profile, r, bat_bin_name))
+            lines.append("if %ERRORLEVEL% == 0 goto :eof")
+        lines.append('echo All resolvers exhausted')
     else:
-        addr = resolver_addrs[0]
-        lines.append(build_vaydns_command(profile, addr).replace("./vaydns-client", "vaydns-client.exe"))
+        addr = resolver_addrs[0] if resolver_addrs[0] else ""
+        if addr:
+            lines.append(build_vaydns_command(profile, addr, bat_bin_name))
+        else:
+            lines.append(f"echo ERROR: set a resolver address for {transport} transport")
     lines += ["pause"]
     script_path = folder / "run.bat"
     script_path.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
@@ -3929,17 +4043,20 @@ def get_vaydns_exe() -> Path | None:
 
     if sys.platform == "win32":
         candidates = [
-            f"vaydns-client_windows_{arch}.exe",
+            f"vaydns-client_windows_{arch}.exe",   # underscore style
+            f"vaydns-client-windows-{arch}.exe",   # dash style
             "vaydns-client.exe",
         ]
     elif sys.platform == "darwin":
         candidates = [
-            f"vaydns-client_darwin_{arch}",
+            f"vaydns-client-darwin-{arch}",        # dash style (actual files)
+            f"vaydns-client_darwin_{arch}",         # underscore style
             "vaydns-client",
         ]
     else:  # Linux + anything else
         candidates = [
-            f"vaydns-client_linux_{arch}",
+            f"vaydns-client-linux-{arch}",         # dash style (actual files)
+            f"vaydns-client_linux_{arch}",          # underscore style
             "vaydns-client",
         ]
 
@@ -4837,21 +4954,56 @@ class App(tk.Tk):
                 vd_opt[wkey] = var
             return make
 
-        opt_row("transport",       "Transport",         "نوع انتقال",
+        # ── Transport ──
+        opt_row("transport",        "Transport",                    "نوع انتقال",
                 combo_b(VAYDNS_TRANSPORT_LABELS, VAYDNS_TRANSPORT_LABELS[0]))
-        opt_row("listen_port",     "Listen Port",       "پورت محلی",
+        opt_row("custom_resolver",  "Resolver  (IP, URL or host:port)", "Resolver",
+                entry_b("", width=30))
+
+        # ── Local ──
+        opt_row("listen_port",      "Listen Port",                  "پورت محلی",
                 spinbox_b(1024, 65535, 7000))
-        opt_row("resolver",        "Resolver (UDP IP or DoH URL)", "Resolver",
-                entry_b("", width=26))
-        opt_row("max_qname_len",   "Max QNAME Length",  "حداکثر طول QNAME",
+
+        # ── QNAME / MTU ──
+        opt_row("max_qname_len",    "Max QNAME Len  [50–253]",      "Max QNAME",
                 spinbox_b(50, 253, 101))
-        opt_row("idle_timeout",    "Idle Timeout",      "Idle Timeout",
+        opt_row("max_num_labels",   "Max Labels  (0=unlimited)",    "Max Labels",
+                spinbox_b(0, 128, 0))
+
+        # ── Session ──
+        opt_row("idle_timeout",     "Idle Timeout  (match server)", "Idle Timeout",
                 entry_b("10s", width=8))
-        opt_row("keepalive",       "Keepalive",         "Keepalive",
+        opt_row("keepalive",        "Keepalive  (< idle_timeout)",  "Keepalive",
                 entry_b("2s", width=8))
-        opt_row("record_type",     "Record Type",       "نوع رکورد",
+        opt_row("reconnect_min",    "Reconnect Min",                "Reconnect Min",
+                entry_b("1s", width=8))
+        opt_row("reconnect_max",    "Reconnect Max",                "Reconnect Max",
+                entry_b("30s", width=8))
+        opt_row("max_streams",      "Max Streams  (0=unlimited)",   "Max Streams",
+                spinbox_b(0, 256, 0))
+
+        # ── DNS / Protocol ──
+        opt_row("record_type",      "Record Type  (match server)",  "نوع رکورد",
                 combo_b(VAYDNS_RECORD_LABELS, "txt"))
-        opt_row("log_level",       "Log Level",         "سطح لاگ",
+
+        # ── Queue / KCP ──
+        opt_row("queue_size",       "Queue Size",                   "Queue Size",
+                spinbox_b(64, 4096, 512))
+        opt_row("kcp_window_size",  "KCP Window  (0=queue/2)",      "KCP Window",
+                spinbox_b(0, 4096, 0))
+
+        # ── UDP ──
+        opt_row("udp_workers",      "UDP Workers",                  "UDP Workers",
+                spinbox_b(1, 500, 100))
+        opt_row("udp_shared_socket","Shared UDP Socket",            "Shared Socket",
+                combo_b(["False", "True"], "False"))
+
+        # ── Rate limit ──
+        opt_row("rps",              "Rate Limit  req/s  (0=off)",   "Rate Limit",
+                spinbox_b(0, 1000, 0))
+
+        # ── Logging ──
+        opt_row("log_level",        "Log Level",                    "سطح لاگ",
                 combo_b(VAYDNS_LOG_LABELS, "info"))
 
         self._vd_popt_vars = vd_opt
@@ -4961,15 +5113,25 @@ class App(tk.Tk):
 
         vo = self._vd_popt_vars
         transport = opts.get("transport", "udp")
-        t_match = next((l for l in VAYDNS_TRANSPORT_LABELS if l.startswith(transport)), VAYDNS_TRANSPORT_LABELS[0])
+        t_match   = next((l for l in VAYDNS_TRANSPORT_LABELS
+                          if l.startswith(transport)), VAYDNS_TRANSPORT_LABELS[0])
         vo["transport"].set(t_match)
+        vo["custom_resolver"].set(opts.get("custom_resolver", ""))
         vo["listen_port"].set(opts.get("listen_port", 7000))
-        vo["resolver"].set(opts.get("custom_resolver", ""))
         vo["max_qname_len"].set(opts.get("max_qname_len", 101))
+        vo["max_num_labels"].set(opts.get("max_num_labels", 0))
         vo["idle_timeout"].set(opts.get("idle_timeout", "10s"))
         vo["keepalive"].set(opts.get("keepalive", "2s"))
+        vo["reconnect_min"].set(opts.get("reconnect_min", "1s"))
+        vo["reconnect_max"].set(opts.get("reconnect_max", "30s"))
+        vo["max_streams"].set(opts.get("max_streams", 0))
         rtype = opts.get("record_type", "txt")
         vo["record_type"].set(rtype if rtype in VAYDNS_RECORD_LABELS else "txt")
+        vo["queue_size"].set(opts.get("queue_size", 512))
+        vo["kcp_window_size"].set(opts.get("kcp_window_size", 0))
+        vo["udp_workers"].set(opts.get("udp_workers", 100))
+        vo["udp_shared_socket"].set("True" if opts.get("udp_shared_socket", False) else "False")
+        vo["rps"].set(opts.get("rps", 0))
         loglvl = opts.get("log_level", "info")
         vo["log_level"].set(loglvl if loglvl in VAYDNS_LOG_LABELS else "info")
 
@@ -4980,14 +5142,23 @@ class App(tk.Tk):
         transport_str = vo["transport"].get()
         transport_key = transport_str.split(" — ")[0].strip()
         return {
-            "transport":        transport_key,
-            "listen_port":      vo["listen_port"].get(),
-            "custom_resolver":  vo["resolver"].get().strip(),
-            "max_qname_len":    vo["max_qname_len"].get(),
-            "idle_timeout":     vo["idle_timeout"].get().strip(),
-            "keepalive":        vo["keepalive"].get().strip(),
-            "record_type":      vo["record_type"].get(),
-            "log_level":        vo["log_level"].get(),
+            "transport":         transport_key,
+            "custom_resolver":   vo["custom_resolver"].get().strip(),
+            "listen_port":       vo["listen_port"].get(),
+            "max_qname_len":     vo["max_qname_len"].get(),
+            "max_num_labels":    vo["max_num_labels"].get(),
+            "idle_timeout":      vo["idle_timeout"].get().strip(),
+            "keepalive":         vo["keepalive"].get().strip(),
+            "reconnect_min":     vo["reconnect_min"].get().strip(),
+            "reconnect_max":     vo["reconnect_max"].get().strip(),
+            "max_streams":       vo["max_streams"].get(),
+            "record_type":       vo["record_type"].get(),
+            "queue_size":        vo["queue_size"].get(),
+            "kcp_window_size":   vo["kcp_window_size"].get(),
+            "udp_workers":       vo["udp_workers"].get(),
+            "udp_shared_socket": vo["udp_shared_socket"].get() == "True",
+            "rps":               vo["rps"].get(),
+            "log_level":         vo["log_level"].get(),
         }
 
     def _vd_profile_save_changes(self):
@@ -5025,12 +5196,25 @@ class App(tk.Tk):
         if not script.exists():
             messagebox.showerror("", f"Script not found: {script}"); return
 
-        bin_name = "vaydns-client.exe" if sys.platform == "win32" else "vaydns-client"
-        if not (folder / bin_name).exists():
-            fa_hint = "فایل vaydns-client را در کنار برنامه قرار دهید تا کپی شود"
-            en_hint = "Place vaydns-client binary next to this app to have it copied automatically"
-            messagebox.showerror("", f"{'Binary not found' if not fa else 'فایل اجرایی پیدا نشد'}:\n{folder / bin_name}\n\n{en_hint if not fa else fa_hint}")
-            return
+        # Check that some vaydns-client binary exists in the folder
+        # (it may be named with arch suffix e.g. vaydns-client-darwin-arm64)
+        bin_src = get_vaydns_exe()
+        bin_in_folder = None
+        if bin_src:
+            bin_in_folder = folder / bin_src.name
+        if not bin_in_folder or not bin_in_folder.exists():
+            # Last-resort: check for generic name too
+            generic = "vaydns-client.exe" if sys.platform == "win32" else "vaydns-client"
+            if (folder / generic).exists():
+                bin_in_folder = folder / generic
+            else:
+                fa_hint = "فایل vaydns-client را در کنار برنامه قرار دهید تا کپی شود"
+                en_hint = "Place vaydns-client binary next to this app to have it copied automatically"
+                messagebox.showerror("",
+                    f"{'Binary not found' if not fa else 'فایل اجرایی پیدا نشد'}"
+                    f"\n{folder}"
+                    f"\n\n{en_hint if not fa else fa_hint}")
+                return
 
         import subprocess, shlex
         folder_q  = shlex.quote(str(folder))
@@ -5466,14 +5650,12 @@ class App(tk.Tk):
             messagebox.showwarning(
                 "", "دامنه را وارد کنید." if fa else "Please enter the domain.")
             return
-        if not key:
-            messagebox.showwarning(
-                "", "کلید را وارد کنید." if fa else "Please enter the key.")
-            return
         if not country:
             messagebox.showwarning(
                 "", "نام پوشه را وارد کنید." if fa else "Please enter the folder name.")
             return
+        # Note: key fields (MasterDNS key, VayDNS pubkey) are NOT required for scanning.
+        # They are validated when saving each respective profile.
 
         # Reset UI
         self._found_ips.clear()
