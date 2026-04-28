@@ -4,7 +4,7 @@
 
 </div>
 
-# 🌐 KevinNet DNS
+# 🌐 KevinNet DNS 
 
 **A user-friendly GUI client for DNS tunneling — supports MasterDnsVPN and VayDNS**
 
