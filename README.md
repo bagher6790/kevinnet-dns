@@ -467,5 +467,5 @@ Every star and share helps this tool reach one more family that needs it.
 ---
 
 ## ⚖️ License & Disclaimer
-
+  
 Copyright © 2026 Kevin Haji — [MIT License](LICENSE) — See [DISCLAIMER.md](DISCLAIMER.md)
